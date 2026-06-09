@@ -1,0 +1,67 @@
+---
+title: "Planta Milenio API: Session Auth and Endpoint Overview"
+sidebarTitle: "Overview"
+description: "Overview of Planta Milenio's HTTP endpoints, session-based authentication, and the two endpoint categories: autocomplete JSON and PDF report downloads."
+---
+
+Planta Milenio exposes HTTP endpoints consumed by its own frontend through AJAX calls and direct browser navigation. These endpoints fall into three categories: autocomplete endpoints that return JSON arrays for real-time form field suggestions, report endpoints that stream PDF file downloads, and view endpoints that serve full HTML pages for the web UI. All endpoints are served by Django 5 and require an active user session.
+
+## Authentication
+
+All endpoints require an active Django session. Authentication is performed by submitting a `POST` request to `/login/` with the user's `nombre` and `password` form fields. On success, Django sets a `sessionid` cookie that must be included in every subsequent request.
+
+<Note>
+  Autocomplete endpoints are `GET`-only and are decorated with `@require_GET`. Sending any other HTTP method will return a `405 Method Not Allowed` response.
+</Note>
+
+### CSRF Protection
+
+Django's CSRF middleware is active on all `POST` endpoints. Browser clients handle this automatically via the `csrftoken` cookie that Django sets on the first page load. For programmatic access, obtain the CSRF token from the `csrftoken` cookie after loading any page and pass it either in the `X-CSRFToken` request header or in the `csrfmiddlewaretoken` POST body field.
+
+### Login Example
+
+```bash
+# Step 1 — Load the login page to obtain a CSRF token
+curl -c cookies.txt http://localhost:8000/login/
+
+# Step 2 — Extract the CSRF token from the cookie jar, then log in
+curl -c cookies.txt -b cookies.txt -X POST http://localhost:8000/login/ \
+  -d 'nombre=operador1&password=mypassword&csrfmiddlewaretoken=<token>'
+
+# Step 3 — Use the session cookie for all subsequent requests
+curl -b cookies.txt 'http://localhost:8000/autocomplete/empresa/?q=agro'
+```
+
+## Endpoint Categories
+
+Planta Milenio's endpoints are organised into two primary API surface areas plus the HTML view layer.
+
+| Category | Base Path | Response Format | Auth Requirement |
+|---|---|---|---|
+| Autocomplete | `/autocomplete/…` | JSON array | Active session |
+| PDF Reports | `/reporte_pdf/…`, `/reporte_historial/` | `application/pdf` | Active session + optional per-module permission |
+| HTML Views | `/control/`, `/reportes/`, etc. | `text/html` | Active session + per-module permission |
+
+### Per-Module Permissions
+
+Non-autocomplete views enforce per-module permissions stored on the authenticated user's profile. If a user attempts to access a restricted view without the required permission, they are redirected to the login page. Autocomplete endpoints only require a valid session and do not check module-level permissions.
+
+<CardGroup cols={2}>
+  <Card
+    title="Autocomplete Endpoints"
+    icon="magnifying-glass"
+    href="/api/autocomplete"
+  >
+    Reference for all 12 GET autocomplete endpoints. Returns JSON arrays for
+    company, vehicle, driver, product, destination, and visitor field
+    suggestions.
+  </Card>
+  <Card
+    title="PDF Report Endpoints"
+    icon="file-pdf"
+    href="/api/reports"
+  >
+    Reference for the three PDF report download endpoints that generate
+    WeasyPrint PDFs for raw-material history and personnel access records.
+  </Card>
+</CardGroup>

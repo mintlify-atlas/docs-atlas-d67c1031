@@ -1,0 +1,96 @@
+---
+title: "Raw Material Intake Control: Register Purchase Orders"
+sidebarTitle: "Raw Material"
+description: "Use the Control de Entradas module to search purchase orders from the Profit ERP, register vehicle entries, and maintain a paginated local intake history."
+---
+
+The **Control de Entradas** module is the plant's primary gate for raw-material intake. Operators search an open purchase order from the Profit ERP, confirm the vehicle and product details, and submit an entry record that is simultaneously saved to the local database and pushed to Ceres Romana via a stored procedure. A rolling history panel lets supervisors review all past entries filtered by date range.
+
+## Required Permission
+
+Access to this module requires the `permiso_control` permission. Users without it are redirected on both GET and POST requests. Users flagged as `solo_consulta` (read-only) can search orders and browse the history panel but are blocked from submitting new entries.
+
+## Searching a Purchase Order
+
+Navigate to `/control/` and append the `fact_num` query parameter with the order number you want to look up. The view queries the `ceres_romana.orden_profit` table and displays the matching record inline above the registration form.
+
+```
+GET /control/?fact_num=0000123456
+```
+
+The search result includes the following fields pulled directly from `orden_profit`:
+
+| Field | Description |
+|---|---|
+| Order number | The `fact_num` identifier |
+| Emission date | Date the order was created in Profit |
+| Status | Current order status in the ERP |
+| Supplier | Vendor associated with the order |
+| Product | Product description line |
+| Quantity | Total ordered quantity |
+| Pending | Remaining quantity not yet received |
+
+<Note>
+  Only one order can be searched or registered at a time. The form always operates on the single order number supplied in the `fact_num` parameter. To register a different order, issue a new search with a different `fact_num`.
+</Note>
+
+## Registering an Entry
+
+Once the order details appear on screen, complete the registration form and submit it. The two fields that must be filled in before the form will accept a submission are:
+
+- **Vehicle plate** (`Vehiculo_Placa`) — the plate of the vehicle entering the plant
+- **Product description** — selected from the autocomplete dropdown populated by the order's product lines
+
+All other transport details (company, driver, destination) are confirmed from the order data already retrieved.
+
+<Warning>
+  The local `Historial` record is created **before** the Ceres Romana stored procedure is called. If the local insert fails (for example, due to a validation error or database constraint), the stored procedure will not be invoked. Conversely, if the local record is created successfully but the Ceres Romana call subsequently fails, the local entry will remain — operators should verify the Ceres Romana side in the Auditoría module.
+</Warning>
+
+### What Happens on Submit
+
+<Steps>
+  <Step title="Form validation">
+    The server checks that `Vehiculo_Placa` and the product description are both present. Missing either field returns a validation error without writing any data.
+  </Step>
+  <Step title="Local Historial record created">
+    A new `Historial` row is inserted into the local SQLite database, storing the vehicle plate, order number, product description, and an automatic entry timestamp.
+  </Step>
+  <Step title="Ceres Romana insert">
+    The `Orden_Profit_Transporte_Insert` stored procedure is executed on the `ceres_romana` database, recording the full transport details: product code, company RIF, driver cedula, vehicle plate, trailer plate, and destination name.
+  </Step>
+  <Step title="Confirmation">
+    On success the page reloads and the new entry appears at the top of the history panel below the form.
+  </Step>
+</Steps>
+
+## History Panel
+
+Below the registration form, the page shows a paginated list of all `Historial` entries recorded through this module. You can narrow the list to a specific period using the date filter parameters.
+
+```
+GET /control/?fecha_inicio=2025-01-01&fecha_fin=2025-01-31
+```
+
+Both date parameters are optional. When omitted, the full history is returned (paginated). The panel displays vehicle plate, order number, product description, and the entry timestamp for each record.
+
+## URL Reference
+
+```
+# Search an order
+GET  /control/?fact_num=<order_number>
+
+# Search an order and filter history by date range
+GET  /control/?fact_num=<order_number>&fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+
+# Filter history only (no order search)
+GET  /control/?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+
+# Register an entry (form POST)
+POST /control/
+     Body: validar_fact_num=1, Vehiculo_Placa=..., producto_descripcion=...
+```
+
+## Read-Only Mode
+
+Accounts with the `solo_consulta` flag can access `/control/` and use all GET-based features — searching orders and browsing the history panel with date filters. Any POST submission from a `solo_consulta` session is rejected. The registration form fields are disabled in the template when this flag is active, making the restriction visible to the operator before they attempt to submit.

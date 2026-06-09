@@ -1,0 +1,151 @@
+---
+title: "Configure Databases and Django Settings for Planta Milenio"
+sidebarTitle: "Configuration"
+description: "How to configure Planta Milenio's three database connections, static file paths, session timeout, and timezone settings in proyecto/settings.py."
+---
+
+All runtime configuration for Planta Milenio lives in `proyecto/settings.py`. This file controls how Django connects to the three databases, how long user sessions last, which timezone is used for timestamps, where static assets are served from, and the security posture of the deployment. The sections below document each configuration area and explain why each setting exists.
+
+<Warning>
+  The default `settings.py` ships with `DEBUG = True` and a hardcoded `SECRET_KEY`. Both **must** be changed before the application is deployed anywhere outside a developer laptop. Set `DEBUG = False` in production, generate a new secret key (for example with `python -c "from django.core.management.utils import get_random_secret_key; print(get_random_secret_key())"`), and set `ALLOWED_HOSTS` to the exact IP address or hostname of your server. Leaving `DEBUG = True` in production exposes full tracebacks — including database credentials — to anyone who triggers an error.
+</Warning>
+
+## Database Configuration
+
+Planta Milenio uses three simultaneous database connections managed through Django's multi-database routing system. The `default` connection handles all writes and stores application state locally; the two SQL Server connections are used exclusively for reads from external ERP and logistics systems.
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'planta.sqlite3',
+    },
+    'sqlserver': {
+        'ENGINE': 'mssql',
+        'NAME': 'AGRBSS_A',
+        'USER': 'profit',
+        'PASSWORD': '<your-password>',
+        'HOST': '<sql-server-host>',
+        'PORT': '1433',
+        'OPTIONS': {
+            'driver': 'FreeTDS',
+            'tds_version': '7.4',
+            'host_is_server': True,
+        },
+    },
+    'ceres_romana': {
+        'ENGINE': 'mssql',
+        'NAME': 'ceres_romana',
+        'USER': 'profit',
+        'PASSWORD': '<your-password>',
+        'HOST': '<sql-server-host>',
+        'PORT': '1433',
+        'OPTIONS': {
+            'driver': 'FreeTDS',
+            'tds_version': '7.4',
+            'host_is_server': True,
+        },
+    },
+}
+```
+
+### `default` — SQLite
+
+The `default` database is a local SQLite file (`planta.sqlite3`) created in the Django project root directory (`BASE_DIR`). It stores:
+
+- **Custom user profiles** — usernames, hashed passwords, contact details, per-module permission flags, and read-only mode settings
+- **Historial de entradas** — the complete raw-material intake log: truck arrivals, weights, timestamps, and associated purchase-order references
+- **Acceso de personas** — the personnel entry/exit log maintained by the security module
+
+SQLite requires no network access and no separate database server process, so it remains fully operational even when connectivity to the SQL Server instances is lost.
+
+### `sqlserver` — Profit ERP (`AGRBSS_A`)
+
+The `sqlserver` connection targets the `AGRBSS_A` database on the company's SQL Server instance. This is the Profit ERP database. Planta Milenio queries it read-only for:
+
+- **`ordenes`** — purchase orders used to validate and link incoming raw-material truck loads
+- **`reng_ord`** — purchase-order line items (renglones de orden) providing product codes, quantities, and units
+
+Replace `<sql-server-host>` with the hostname or IP address of the SQL Server machine, and `<your-password>` with the password for the `profit` SQL Server login. The `OPTIONS` block instructs pyodbc to use the FreeTDS driver with TDS protocol version 7.4, which is compatible with SQL Server 2008 R2 and later.
+
+On **Windows**, replace `'driver': 'FreeTDS'` with `'driver': 'ODBC Driver 17 for SQL Server'` (or whichever version of the Microsoft ODBC Driver is installed) and remove the `tds_version` and `host_is_server` keys, as they are FreeTDS-specific.
+
+### `ceres_romana` — Transport and Logistics
+
+The `ceres_romana` connection targets the `ceres_romana` database on the same or a different SQL Server host. It supplies the reference data for the transport auditing module:
+
+- **Product catalogue** — the list of products that can be transported
+- **Vehicle registry** — plate numbers and vehicle types
+- **Driver records** — driver names and licence information
+- **Destination catalogue** — authorized destination points for outbound loads
+
+The `USER`, `PASSWORD`, `HOST`, and `OPTIONS` follow the same pattern as the `sqlserver` entry above.
+
+## Session Settings
+
+Planta Milenio enforces a 1-hour inactivity timeout on all sessions. Two settings work together to implement this:
+
+```python
+SESSION_COOKIE_AGE = 3600       # seconds — session expires after 1 hour of inactivity
+SESSION_SAVE_EVERY_REQUEST = True  # reset the timer on every HTTP request
+```
+
+`SESSION_COOKIE_AGE` sets the maximum lifetime of a session cookie in seconds. With `SESSION_SAVE_EVERY_REQUEST = True`, Django updates the cookie's expiry timestamp on every request, so the clock resets each time the user interacts with the application. A session only expires after the user has been completely idle for a full hour.
+
+When a session expires, the user is automatically redirected to the login page. No data is lost — only the authentication state is cleared.
+
+## Timezone and Language
+
+Planta Milenio is configured for Venezuelan Spanish:
+
+```python
+TIME_ZONE = 'America/Caracas'
+LANGUAGE_CODE = 'es-ve'
+USE_TZ = True
+USE_I18N = True
+```
+
+`TIME_ZONE = 'America/Caracas'` ensures that all timestamps stored in SQLite and displayed in the interface reflect Venezuela Standard Time (UTC−4). This is important for the intake log and personnel access records, where the exact local time of an event matters for auditing purposes.
+
+`LANGUAGE_CODE = 'es-ve'` sets Venezuelan Spanish as the locale, which affects Django's built-in form validation messages, date formatting, and number formatting throughout the application.
+
+## Static Files
+
+CSS stylesheets, JavaScript files, and images are served from the `assets/` directory at the project root:
+
+```python
+STATIC_URL = '/static/'
+STATICFILES_DIRS = [BASE_DIR / "assets"]
+```
+
+`STATICFILES_DIRS` tells Django where to look for static files when running `collectstatic` or when serving them directly in development mode. All front-end assets — custom styles, plant logos, icon sets — live under `assets/`.
+
+In production, run `python manage.py collectstatic` to copy all static files into the directory pointed to by `STATIC_ROOT`, then configure your web server (Nginx, Apache) to serve that directory directly. Never serve static files through the Django process in production.
+
+## Security Settings for Production
+
+The following settings must be reviewed and updated before deploying Planta Milenio to a server accessible by more than one developer machine:
+
+```python
+# Change both of these for production
+DEBUG = False
+SECRET_KEY = 'your-new-randomly-generated-secret-key'
+
+# Set to your server's actual IP address or domain name
+ALLOWED_HOSTS = ['192.168.1.100', 'planta.yourdomain.com']
+```
+
+| Setting | Development value | Production recommendation |
+|---|---|---|
+| `DEBUG` | `True` | `False` |
+| `SECRET_KEY` | Hardcoded string in repo | Long random string, loaded from an environment variable |
+| `ALLOWED_HOSTS` | `['*']` or `['localhost']` | Exact server IP or hostname |
+
+A convenient pattern for keeping the secret key out of version control is to load it from an environment variable:
+
+```python
+import os
+SECRET_KEY = os.environ.get('DJANGO_SECRET_KEY', 'fallback-for-dev-only')
+```
+
+Set the `DJANGO_SECRET_KEY` environment variable on the production host through your process manager (systemd unit file, Docker environment, etc.) and the fallback value will only ever be used in local development.

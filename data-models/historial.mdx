@@ -1,0 +1,73 @@
+---
+title: "Historial Model: Raw Material Entry Log"
+sidebarTitle: "Historial"
+description: "Reference for the Historial model that tracks every raw-material purchase order entry with vehicle plate, order number, product description, and timestamp."
+---
+
+`Historial` is the local record of every purchase order entry registered through the Control de Entradas module. Each time an operator processes an incoming vehicle, a `Historial` row is created in the local SQLite database (`planta.sqlite3`) before the corresponding transport record is written to the remote Ceres Romana system. This two-step approach means `Historial` acts as a gating mechanism — an order must be registered here first, and the deduplication logic prevents the same order from being submitted to Ceres Romana twice.
+
+## Model Definition
+
+```python
+from django.db import models
+
+class Historial(models.Model):
+    placa_vehiculo = models.CharField(max_length=20)
+    numero_orden = models.CharField(max_length=20)
+    fecha_hora = models.DateTimeField(auto_now_add=True)
+    descripcion = models.TextField(blank=True, null=True)
+    pendiente = models.FloatField(null=True, blank=True)
+```
+
+## Fields
+
+<ParamField path="placa_vehiculo" type="string" required>
+  The vehicle license plate captured at the time of entry. Maximum 20 characters. Combined with `numero_orden` and `descripcion` to detect duplicate submissions before writing to Ceres Romana.
+</ParamField>
+
+<ParamField path="numero_orden" type="string" required>
+  The purchase order number as it appears in Profit ERP. Maximum 20 characters. This is the primary identifier used when querying Ceres Romana for order line details.
+</ParamField>
+
+<ParamField path="fecha_hora" type="datetime">
+  Timestamp set automatically to the current date and time when the record is created (`auto_now_add=True`). The application server runs in the `America/Caracas` timezone (`UTC-4`), so all stored values reflect local Venezuelan time. This field is not editable after creation.
+</ParamField>
+
+<ParamField path="descripcion" type="string">
+  The product name or description associated with the order line, as returned by the Ceres Romana query. Optional — the column is nullable and blank-allowed. Also participates in the duplicate-detection check alongside `numero_orden` and `placa_vehiculo`.
+</ParamField>
+
+<ParamField path="pendiente" type="float">
+  The remaining quantity on the order line at the time of entry, as reported by Ceres Romana. Optional and nullable. Stored for reference in the audit log and reports module.
+</ParamField>
+
+## Querying Examples
+
+Use `.filter()` with the composite key fields to check for existing entries before proceeding with a Ceres Romana write, and filter by `fecha_hora__date` for daily report queries.
+
+```python
+from app2.models import Historial
+
+# Check if an order was already entered
+exists = Historial.objects.filter(
+    numero_orden='ORD-001',
+    placa_vehiculo='ABC-123'
+).exists()
+
+# Get recent entries with date filter
+from django.utils import timezone
+import datetime
+
+today = timezone.now().date()
+entries = Historial.objects.filter(
+    fecha_hora__date=today
+).order_by('-fecha_hora')
+```
+
+## Deduplication Logic
+
+Before creating a new `Historial` record the entry view checks whether a row already exists that matches the combination of `numero_orden`, `placa_vehiculo`, and `descripcion`. If a match is found, the view returns an error to the operator and does not write to Ceres Romana. This prevents the same physical delivery from generating multiple transport records in the remote ERP system. When building custom management commands or batch imports, apply the same three-field check to preserve this invariant.
+
+<Warning>
+  Deleting `Historial` records removes the deduplication guard for those orders. If a record is deleted and the same vehicle arrives again with the same purchase order number, the entry view will treat it as a new submission and write a duplicate transport record to Ceres Romana. Only delete records if you are certain the corresponding Ceres Romana entry has also been reversed.
+</Warning>

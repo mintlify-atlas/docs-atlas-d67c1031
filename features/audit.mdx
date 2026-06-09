@@ -1,0 +1,110 @@
+---
+title: "Transport Audit: Review and Edit Transport Records"
+sidebarTitle: "Audit"
+description: "Browse and correct transport records in the Auditoría module, which reads orden_profit_transporte from Ceres Romana with inline editing and pagination."
+---
+
+The **Auditoría** module gives supervisors a read-write view of transport records stored in Ceres Romana. It fetches the most recent 100 entries from the `orden_profit_transporte` table, presents them in a searchable, paginated table, and allows authorised users to correct transport details via inline editing. All edits are applied directly to Ceres Romana through a stored procedure — no local copy of these records is maintained.
+
+## Required Permission
+
+Access requires the `permiso_auditoria` permission. Users flagged as `solo_consulta` can browse and search records but cannot submit edits.
+
+## Reading Transport Records
+
+On load, the module retrieves the top 100 records from `orden_profit_transporte` ordered by most recent first. Each row in the table shows:
+
+| Column | Description |
+|---|---|
+| Order number | The `Numero_Orden` linking back to `orden_profit` |
+| Product | Product code and enriched product name resolved from `orden_profit` |
+| Company | `Empresa_Rif` of the transporting company |
+| Vehicle plate | `Vehiculo_Placa` |
+| Trailer plate | `Vehiculo_Remolque_Placa` |
+| Driver | Conductor name and cedula |
+| Destination | `Destino_Nombre` |
+| Pesada status | `Pesada_Id` — indicates whether the transport has been weighed |
+
+### Product Enrichment
+
+For each transport record, the module cross-references `Numero_Orden` against `orden_profit` to retrieve the associated product lines. This means the product column reflects the ERP product data rather than a raw code, giving auditors human-readable context without needing to leave the module.
+
+<Note>
+  All edits made through this module are applied **directly to Ceres Romana** via the `Orden_Profit_Transporte_Update` stored procedure. There is no local shadow copy of transport records — what you see is the live data in the ERP database, and what you save goes straight back to it.
+</Note>
+
+## Searching Records
+
+Use the `buscar` query parameter to filter the displayed records. The search matches against:
+
+- Order number (`Numero_Orden`)
+- Vehicle plate (`Vehiculo_Placa`)
+- Conductor first name (`Conductor_Nombre`)
+- Conductor surname (`Conductor_Apellido`)
+- Conductor cedula (`Conductor_Cedula`)
+
+```
+GET /auditoria/?buscar=ABC123
+GET /auditoria/?buscar=12345678
+GET /auditoria/?buscar=0000045678
+```
+
+Filtering is applied before pagination, so page numbers always refer to pages within the filtered result set.
+
+## Pagination
+
+Records are displayed 10 per page. Use the `page` parameter to navigate:
+
+```
+GET /auditoria/?page=2
+GET /auditoria/?buscar=garcia&page=3
+```
+
+## Editing a Record
+
+Authorised users can edit any transport record that has not yet been weighed. Click the edit button on a row to open the inline edit form, modify the relevant fields, and submit.
+
+The POST request must include `editar_registro` alongside the record identifier and the updated field values. The server then calls the `Orden_Profit_Transporte_Update` stored procedure on Ceres Romana with the new values.
+
+### Editable Fields
+
+| Field | Description |
+|---|---|
+| `Producto_Codigo` | Product code — the system automatically resolves the corresponding `Producto_Id` and `Producto_Nombre` |
+| `Empresa_Rif` | RIF (tax ID) of the transport company |
+| `Conductor_Cedula` | Driver's national ID number |
+| `Vehiculo_Placa` | Primary vehicle plate |
+| `Vehiculo_Remolque_Placa` | Trailer plate (leave blank if no trailer) |
+| `Destino_Nombre` | Destination name |
+
+When `Producto_Codigo` is updated, the stored procedure call includes the resolved `Producto_Id` and `Producto_Nombre` automatically — you only need to supply the code.
+
+### Edit Restrictions
+
+<Warning>
+  Records where `Pesada_Id != 0` are **locked and cannot be edited**. A non-zero `Pesada_Id` means the transport has already been processed through the weighbridge. Editing the transport details at that point would create a mismatch with the weigh ticket. The edit button is hidden for these rows in the UI, and any direct POST attempt for a locked record is rejected by the server.
+</Warning>
+
+`solo_consulta` users also cannot edit records regardless of `Pesada_Id` status. The edit controls are not rendered for read-only sessions.
+
+## URL Reference
+
+```
+# List the latest 100 transport records
+GET  /auditoria/
+
+# Search within records
+GET  /auditoria/?buscar=<term>
+
+# Navigate to a specific page
+GET  /auditoria/?page=<n>
+
+# Search and paginate
+GET  /auditoria/?buscar=<term>&page=<n>
+
+# Edit a record (form POST)
+POST /auditoria/
+     Body: editar_registro=1, record_id=..., Producto_Codigo=..., Empresa_Rif=...,
+           Conductor_Cedula=..., Vehiculo_Placa=..., Vehiculo_Remolque_Placa=...,
+           Destino_Nombre=...
+```

@@ -1,0 +1,106 @@
+---
+title: "Personnel Access Control: Log Visitor Entry and Exit"
+sidebarTitle: "Personnel Access"
+description: "Record visitor entry and exit at the plant gate using the Control de Personas module, with approval status, visit duration, and searchable history."
+---
+
+The **Control de Personas** module manages visitor and contractor access at the plant gate. Security personnel use it to log every person entering or leaving the facility, capturing identity details, visit purpose, and approval status. When a visitor departs, the operator records the exit time and the system automatically calculates the total visit duration in minutes. All records are searchable and paginated for easy review.
+
+## Required Permission
+
+Access requires the `permiso_control_personas` permission. Users without it cannot reach `/control_personas/` on either GET or POST requests.
+
+## Registering an Entry
+
+When a visitor arrives at the gate, the operator fills out the entry form and submits it. `hora_entrada` is set automatically to the current server time — it does not appear as an editable field.
+
+<Steps>
+  <Step title="Open the entry form">
+    Navigate to `/control_personas/`. The registration form is displayed at the top of the page above the visit history panel.
+  </Step>
+  <Step title="Fill in identity details">
+    Enter the visitor's **nombre** (required), **cedula** (required), and optionally **apellido**. The cedula field is used as the primary identifier when searching history.
+  </Step>
+  <Step title="Fill in visit details">
+    Enter the **motivo_ingreso** (required). Optionally provide **empresa** (visitor's company), **placa** (vehicle plate), **a_quien_visita** (person being visited), and **autorizado_por** (who authorised the entry).
+
+    <Tip>
+      Both **empresa** and **autorizado_por** are backed by autocomplete endpoints that suggest values from past records. Start typing to see suggestions — this keeps company names and authoriser names consistent across entries and reduces typos in searchable fields.
+    </Tip>
+  </Step>
+  <Step title="Set the approval status">
+    Choose **aprobada** (default) or **negada** from the **estado_visita** selector. Denied visits are immediately closed: `hora_salida` is set to the current time and `tiempo_visita` is recorded as `0` minutes. No separate exit step is needed for denied visitors.
+  </Step>
+  <Step title="Submit">
+    Submit the form. The new record appears at the top of the history panel with the auto-stamped `hora_entrada`.
+  </Step>
+</Steps>
+
+### Entry Form Fields
+
+| Field | Required | Notes |
+|---|---|---|
+| `nombre` | ✅ Yes | Visitor's first name |
+| `cedula` | ✅ Yes | National ID number — used as unique search key |
+| `motivo_ingreso` | ✅ Yes | Reason for the visit |
+| `apellido` | No | Visitor's surname |
+| `empresa` | No | Visitor's company (autocomplete) |
+| `placa` | No | Vehicle plate number |
+| `autorizado_por` | No | Name of authorising staff member (autocomplete) |
+| `a_quien_visita` | No | Plant staff member being visited |
+| `estado_visita` | No | `aprobada` (default) or `negada` |
+
+## Denied Visits
+
+When `estado_visita` is set to `negada`, the record is created and immediately closed in a single step:
+
+- `hora_salida` is set to the current timestamp at the moment of form submission
+- `tiempo_visita` is stored as `0` minutes
+
+This means denied visitors appear as already-closed entries in the history panel. The exit button is not shown for them because there is nothing left to record.
+
+## Registering a Departure
+
+For approved visits, exit is recorded separately when the visitor actually leaves.
+
+<Steps>
+  <Step title="Find the active visit">
+    Locate the visitor's open entry in the history panel. Active visits (those without an exit time) show an exit button. Use the search bar to find a specific visitor quickly if the list is long.
+  </Step>
+  <Step title="Record the exit">
+    Click the exit button. This sends a POST request with `salida_id` set to the record's primary key. The server sets `hora_salida` to the current timestamp.
+  </Step>
+  <Step title="Duration is calculated automatically">
+    `tiempo_visita` is computed as the difference between `hora_salida` and `hora_entrada` in whole minutes and stored on the record. No manual input is required.
+  </Step>
+</Steps>
+
+Only **approved** visits (`estado_visita = aprobada`) can have exit recorded through this flow. Denied visits are already closed at creation.
+
+## Searching the History
+
+Append `?buscar=<term>` to the URL to filter the paginated history. The search runs across four fields simultaneously:
+
+- `nombre`
+- `apellido`
+- `cedula`
+- `placa_vehiculo`
+
+```
+GET /control_personas/?buscar=garcia
+GET /control_personas/?buscar=ABC123
+GET /control_personas/?buscar=12345678
+```
+
+Partial matches are supported — searching for `gar` will match surnames containing that substring.
+
+## Pagination
+
+The history panel shows 10 records per page. Navigate between pages using the `historial_page` parameter:
+
+```
+GET /control_personas/?historial_page=2
+GET /control_personas/?buscar=garcia&historial_page=3
+```
+
+Both `buscar` and `historial_page` can be combined freely. The pagination controls in the page template maintain the active search term across page navigation.

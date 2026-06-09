@@ -1,0 +1,105 @@
+{
+  "projectType": "saas",
+  "projectName": "Planta Milenio",
+  "projectDescription": "A Django-based plant operations management system for tracking raw-material intake orders, personnel access control, transport auditing, and report generation.",
+  "theme": "palm",
+  "primaryColor": "#2E7D32",
+  "lightColor": "#A5D6A7",
+  "darkColor": "#1B5E20",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "installation",
+              "configuration"
+            ]
+          },
+          {
+            "group": "User Management",
+            "pages": [
+              "users/overview",
+              "users/create-users",
+              "users/permissions"
+            ]
+          },
+          {
+            "group": "Core Features",
+            "pages": [
+              "features/raw-material-control",
+              "features/personnel-access",
+              "features/audit",
+              "features/reports"
+            ]
+          },
+          {
+            "group": "Data Models",
+            "pages": [
+              "data-models/user-admin",
+              "data-models/historial",
+              "data-models/acceso-persona"
+            ]
+          },
+          {
+            "group": "Deployment",
+            "pages": [
+              "deployment/production",
+              "deployment/database-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Endpoints",
+            "pages": [
+              "api/overview",
+              "api/autocomplete",
+              "api/reports"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Raw material purchase-order intake control linked to an external SQL Server (Profit/Ceres Romana)",
+    "Personnel access log with entry/exit timestamps, visit duration, and approval status",
+    "Transport audit module for reviewing and editing orden_profit_transporte records",
+    "PDF report generation (materia prima and personnel) via WeasyPrint",
+    "Role-based permission system with per-module boolean flags and a read-only mode",
+    "CLI user management tool (CreateUser.py) for bootstrapping admin credentials",
+    "Autocomplete JSON endpoints for companies, drivers, vehicles, products, and people",
+    "Session-based authentication with inactivity timeout and account locking"
+  ],
+  "publicApiSurface": [
+    "GET/POST /control/ — raw-material order intake view",
+    "GET/POST /control_personas/ — personnel access control view",
+    "GET/POST /auditoria/ — transport audit view",
+    "GET/POST /usuarios/ — user management view",
+    "GET /reportes/ — report viewer",
+    "GET /reporte_pdf/materia_prima/ — download materia prima PDF",
+    "GET /reporte_pdf/personal/ — download personnel PDF",
+    "GET /reporte_historial/ — download historial PDF",
+    "GET /autocomplete/empresa/ — company autocomplete JSON",
+    "GET /autocomplete/chuto/ — vehicle (chuto) autocomplete JSON",
+    "GET /autocomplete/tanque/ — trailer autocomplete JSON",
+    "GET /autocomplete/destino/ — destination autocomplete JSON",
+    "GET /autocomplete/conductor/ — driver autocomplete JSON",
+    "GET /autocomplete/producto/ — product autocomplete JSON",
+    "GET /autocomplete/persona/nombre/ — person name autocomplete",
+    "GET /autocomplete/persona/apellido/ — person surname autocomplete",
+    "GET /autocomplete/persona/cedula/ — person ID autocomplete",
+    "GET /autocomplete/persona/placa/ — person vehicle plate autocomplete",
+    "GET /autocomplete/persona/empresa/ — person company autocomplete",
+    "GET /autocomplete/persona/autorizado_por/ — authorizer autocomplete",
+    "POST /login/ — session login",
+    "GET /logout/ — session logout"
+  ]
+}

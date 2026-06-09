@@ -1,0 +1,180 @@
+---
+title: "Install Planta Milenio on Windows and Linux"
+sidebarTitle: "Installation"
+description: "Step-by-step guide to cloning Planta Milenio, creating a Python virtual environment, installing dependencies, and running the Django development server."
+---
+
+This guide walks you through everything needed to get Planta Milenio running on a fresh machine — from system prerequisites to starting the Django development server and creating your first administrator account. The instructions cover both Windows and Linux environments.
+
+<Warning>
+  The `mssql-django` driver communicates with SQL Server through **pyodbc**, which in turn requires a native ODBC driver to be installed at the operating-system level. On **Linux**, install **FreeTDS** (`libfreetds-dev`, `unixodbc-dev`) and register it as an ODBC driver in `/etc/odbcinst.ini`. On **Windows**, download and install the **Microsoft ODBC Driver for SQL Server** from the Microsoft website. Without the correct ODBC driver, the application will start but will raise a connection error the moment it tries to query `AGRBSS_A` or `ceres_romana`.
+</Warning>
+
+<Steps>
+
+  <Step title="Verify Prerequisites">
+    Before cloning the repository, confirm that the following are available on your system.
+
+    **Python 3.10 or later**
+
+    ```bash
+    python --version   # Windows
+    python3 --version  # Linux / macOS
+    ```
+
+    Planta Milenio targets Python 3.10+ because Django 5 dropped support for older versions.
+
+    **pip** (comes bundled with Python 3.10+)
+
+    ```bash
+    pip --version
+    ```
+
+    **Git**
+
+    ```bash
+    git --version
+    ```
+
+    **SQL Server connectivity** — confirm that the machine can reach both SQL Server hosts on port 1433. A quick check with `telnet <host> 1433` or `Test-NetConnection <host> -Port 1433` (PowerShell) is enough to rule out firewall issues before you go further.
+
+    **FreeTDS (Linux only)** — install the development headers and the ODBC bridge:
+
+    ```bash
+    sudo apt-get update
+    sudo apt-get install -y freetds-dev freetds-bin unixodbc-dev tdsodbc
+    ```
+
+    Then add the following stanza to `/etc/odbcinst.ini` so pyodbc can find the driver:
+
+    ```ini
+    [FreeTDS]
+    Description = FreeTDS ODBC driver
+    Driver      = /usr/lib/x86_64-linux-gnu/odbc/libtdsodbc.so
+    Setup       = /usr/lib/x86_64-linux-gnu/odbc/libtdsS.so
+    FileUsage   = 1
+    ```
+
+    The exact `.so` path may differ by distribution; run `find /usr -name "libtdsodbc.so"` if the default path does not match.
+  </Step>
+
+  <Step title="Clone the Repository">
+    Clone the Planta Milenio source code from GitHub into a directory of your choice.
+
+    ```bash
+    git clone https://github.com/JuanDiego3030/Planta_Milenio.git
+    cd Planta_Milenio
+    ```
+
+    The repository root contains the Django project folder (`proyecto/`), the per-app directories, `requirements.txt`, `CreateUser.py`, and `manage.py`.
+  </Step>
+
+  <Step title="Create a Virtual Environment">
+    Create and activate a dedicated Python virtual environment so that Planta Milenio's dependencies are isolated from other projects on the same machine.
+
+    <Tabs>
+      <Tab title="Windows">
+        ```bat
+        python -m venv venv
+        venv\Scripts\activate
+        ```
+
+        After activation, your prompt will be prefixed with `(venv)`. All subsequent `pip` and `python` commands will target this environment.
+
+        To deactivate later:
+
+        ```bat
+        deactivate
+        ```
+      </Tab>
+      <Tab title="Linux / macOS">
+        ```bash
+        python3 -m venv venv
+        source venv/bin/activate
+        ```
+
+        After activation, your prompt will be prefixed with `(venv)`. All subsequent `pip` and `python` commands will target this environment.
+
+        To deactivate later:
+
+        ```bash
+        deactivate
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Install Dependencies">
+    With the virtual environment active, install all Python packages listed in `requirements.txt`:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+    The key packages and their versions are:
+
+    | Package | Version | Purpose |
+    |---|---|---|
+    | `Django` | 5.2.4 | Web framework |
+    | `gunicorn` | 23.0.0 | WSGI server for production deployment |
+    | `mssql-django` | 1.6 | Django database backend for SQL Server |
+    | `pyodbc` | 5.3.0 | ODBC bridge used by mssql-django |
+    | `weasyprint` | 67.0 | HTML-to-PDF rendering for reports and weight tickets |
+    | `pillow` | 12.0.0 | Image processing (logos and stamps in PDFs) |
+
+    The full `requirements.txt` may include additional transitive dependencies; the table above lists the direct, application-level ones.
+  </Step>
+
+  <Step title="Apply Database Migrations">
+    Run Django's migration command to create all tables in the local SQLite database. This creates `planta.sqlite3` in the project root if it does not already exist.
+
+    ```bash
+    python manage.py migrate
+    ```
+
+    You should see a series of `OK` lines as each migration is applied. The SQL Server databases (`AGRBSS_A` and `ceres_romana`) are queried read-only and are never migrated by this command.
+  </Step>
+
+  <Step title="Create the First Administrator Account">
+    Planta Milenio ships with a helper script, `CreateUser.py`, which is the recommended way to create the initial administrator. Run it from the project root with the virtual environment active:
+
+    ```bash
+    python CreateUser.py
+    ```
+
+    The script will prompt you interactively for:
+
+    - **Username** — the login name for the account
+    - **Password** — entered twice for confirmation
+    - **Email** — contact email stored on the user profile
+    - **Phone** — contact phone number stored on the user profile
+    - **Read-only mode** — enter `y` to create a read-only auditor account, or `n` for a full-access administrator
+
+    The account is written directly to the SQLite database and is immediately available.
+
+    <Tip>
+      `CreateUser.py` is the recommended way to bootstrap administrator credentials. Django's built-in `createsuperuser` command will create an account but will not populate the Planta Milenio profile fields (phone, read-only flag, per-module permissions) that the application depends on. Use `CreateUser.py` for every new account, or create accounts through the in-app **Gestión de Usuarios** module once you are logged in.
+    </Tip>
+  </Step>
+
+  <Step title="Start the Development Server">
+    Start Django's built-in development server:
+
+    ```bash
+    python manage.py runserver
+    ```
+
+    By default the server listens on `http://127.0.0.1:8000/`. Open that address in your browser and you will be redirected to the Planta Milenio login page.
+
+    To bind to a specific IP address or port — useful when the server machine and the browser are on different hosts on the same LAN:
+
+    ```bash
+    python manage.py runserver 0.0.0.0:8000
+    ```
+
+    Log in with the administrator account you created in the previous step.
+
+    > **Note:** The Django development server is single-threaded and is not suitable for production use. For a production deployment, serve the application with **Gunicorn** behind a reverse proxy such as Nginx. See the [Configuration](/configuration) page for `ALLOWED_HOSTS` and `DEBUG` settings that must be changed before going to production.
+  </Step>
+
+</Steps>

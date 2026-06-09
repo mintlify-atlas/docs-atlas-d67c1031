@@ -1,0 +1,156 @@
+---
+title: "Create and Manage Admin Users with CreateUser.py"
+sidebarTitle: "Create Users"
+description: "How to bootstrap and manage Planta Milenio admin users using the interactive CreateUser.py CLI script and the web-based Usuarios panel."
+---
+
+Before anyone can log in to Planta Milenio, at least one `User_admin` record must exist in the database. Because the web panel itself requires a logged-in user to operate, the first account must always be created from the command line using `CreateUser.py`. Subsequent accounts can be created either via the CLI or through the web panel at `/usuarios/`.
+
+## Via CLI (`CreateUser.py`)
+
+`CreateUser.py` is an interactive script located at the project root. It configures Django's settings module, calls `django.setup()`, and then provides a three-option menu for managing users without a running server.
+
+<Warning>
+`CreateUser.py` must be run from the project root directory with the virtual environment activated and **after** `python manage.py migrate` has been executed. Running it before migrations will fail because the `app2_user_admin` table does not yet exist.
+
+```bash
+# Correct way to invoke it
+cd /path/to/Planta_Milenio
+source venv/bin/activate   # or venv\Scripts\activate on Windows
+python CreateUser.py
+```
+</Warning>
+
+### Running the script
+
+```bash
+python CreateUser.py
+```
+
+The script opens a persistent menu loop. Select an option by typing its number and pressing Enter.
+
+```
+=== Menú de administración de usuarios ===
+1. Registrar nuevo usuario
+2. Cambiar contraseña de usuario
+3. Salir
+Seleccione una opción:
+```
+
+<Tabs>
+  <Tab title="1 · Register new user">
+
+Selecting option `1` walks through the full registration flow:
+
+```
+=== Menú de administración de usuarios ===
+1. Registrar nuevo usuario
+2. Cambiar contraseña de usuario
+3. Salir
+Seleccione una opción: 1
+
+=== Registro de nuevo usuario ===
+Nombre de usuario: operador1
+Contraseña: ••••••••
+Email (opcional): operador1@planta.com
+Teléfono (opcional): 
+¿El usuario solo podrá consultar y descargar historial? (s/n): n
+[OK] Usuario 'operador1' registrado correctamente. Permiso solo consulta: False
+```
+
+The script validates the inputs before saving:
+
+The script validates the inputs: empty `nombre` or `password` prints `[ERROR] Nombre y contraseña son obligatorios.` and returns to the menu. A duplicate `nombre` or `email` prints the corresponding `[ERROR]` message and aborts. The `solo_consulta` prompt only accepts `s` or `n`; any other input loops with an error message.
+
+  </Tab>
+  <Tab title="2 · Change password">
+
+Selecting option `2` lists all existing users by index, then prompts for the new password and optionally changes the `solo_consulta` flag:
+
+```
+=== Cambiar contraseña de usuario ===
+Usuarios disponibles:
+  1. operador1
+  2. supervisor
+Seleccione el número de usuario: 1
+Nueva contraseña para 'operador1': ••••••••
+¿El usuario 'operador1' solo podrá consultar y descargar historial? (s/n, enter para dejar igual): 
+[OK] Contraseña y permiso actualizados para 'operador1'. Permiso solo consulta: False
+```
+
+Pressing Enter at the `solo_consulta` prompt leaves the existing value unchanged. An empty new password is rejected with `[ERROR] La contraseña no puede estar vacía.`
+
+  </Tab>
+  <Tab title="3 · Exit">
+
+Selecting option `3` (or pressing Ctrl+C) exits cleanly:
+
+```
+Seleccione una opción: 3
+Saliendo...
+```
+
+  </Tab>
+</Tabs>
+
+### Password hashing
+
+All passwords are hashed using Django's `make_password` function before being stored:
+
+```python
+from django.contrib.auth.hashers import make_password
+
+hashed_password = make_password(password)
+user = User_admin(nombre=nombre, password=hashed_password, ...)
+user.save()
+```
+
+The default hasher is **PBKDF2 with SHA-256** and 720,000 iterations (Django 5 default). The login view verifies passwords using `check_password(plain, hashed)`, which supports this format transparently.
+
+<Note>
+Permission flags (`permiso_control`, `permiso_control_personas`, etc.) default to `False` for users created via `CreateUser.py`. After registering the first user, log in through the web panel and use the **Gestión de Usuarios** interface to assign the specific module permissions that account needs.
+</Note>
+
+---
+
+## Via Web Panel (`/usuarios/`)
+
+Once at least one user with `permiso_usuarios = True` exists, all subsequent user management can be done through the browser-based panel at `/usuarios/`.
+
+<Steps>
+  <Step title="Navigate to /usuarios/">
+    Log in and click the **Usuarios** section in the navigation menu. Access requires `permiso_usuarios = True` on the authenticated account. Without it, the view redirects to the login page with an access-denied message.
+  </Step>
+  <Step title="Create a new user">
+    Click the **Crear usuario** button to open the creation form. Fill in the required fields (`nombre`, `password`) and any optional fields (`email`, `telefono`). Toggle the desired permission flags and the `solo_consulta` / `bloqueado` checkboxes, then submit the form.
+  </Step>
+  <Step title="Edit an existing user">
+    Each row in the user list includes an **Edit** action. The edit form pre-populates all current values. Leave the password field empty to keep the existing password unchanged — only populate it to set a new one.
+  </Step>
+  <Step title="Delete a user">
+    Each row also includes a **Delete** action. Deletion is immediate and permanent; there is no soft-delete or confirmation dialog beyond the browser's native form submission.
+  </Step>
+</Steps>
+
+The panel lists users alphabetically (ordered by `nombre`) and paginates at 10 records per page.
+
+### Validation rules (web panel)
+
+The `control_usuarios` view enforces the following before calling `ControlUsuarios.crear_usuario()`:
+
+| Rule | Behaviour on failure |
+|---|---|
+| `nombre` is required | Error: *"Nombre y contraseña son obligatorios."* |
+| `password` is required on create | Error: *"Nombre y contraseña son obligatorios."* |
+| `nombre` must be unique | Database raises `IntegrityError`; displayed as *"Error al crear usuario: …"* |
+| `email` must be unique if provided | Database raises `IntegrityError`; displayed as *"Error al crear usuario: …"* |
+
+### Read-only users and the web panel
+
+A `solo_consulta` user who also has `permiso_usuarios = True` can open `/usuarios/` and browse the user list. However, any attempt to submit the Create, Edit, or Delete forms is blocked at the view level before touching the database:
+
+```
+No tiene permisos para crear, editar o eliminar usuarios. Solo puede consultar.
+```
+
+The view redirects them back to `/usuarios/` with this error message after every blocked POST.

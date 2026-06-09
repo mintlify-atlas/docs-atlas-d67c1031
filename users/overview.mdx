@@ -1,0 +1,93 @@
+---
+title: "User Management in Planta Milenio"
+sidebarTitle: "Overview"
+description: "Understand how Planta Milenio manages admin users with per-module boolean permissions, read-only mode, and account locking."
+---
+
+Planta Milenio uses a custom `User_admin` model to manage all operator accounts. This model is completely independent from Django's built-in `User` and `auth` framework — there are no Django groups, no `is_staff` flag, and no `django.contrib.auth` middleware involved. Authentication is handled entirely through a custom session key (`user_admin_id`) that the login view writes to the session after verifying credentials with `check_password`.
+
+## The `User_admin` Model
+
+Every person who logs in to Planta Milenio is represented by a `User_admin` record stored in the local SQLite/PostgreSQL database managed by the app. The model lives in `app2/models.py` and carries the following fields:
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `nombre` | `CharField(100)` | ✅ | Username — must be unique across all accounts |
+| `password` | `CharField(128)` | ✅ | PBKDF2-hashed password produced by Django's `make_password` |
+| `email` | `EmailField(150)` | ❌ | Optional contact email — unique if provided |
+| `telefono` | `CharField(20)` | ❌ | Optional phone number |
+| `bloqueado` | `BooleanField` | — | When `True`, the account is locked and login is refused |
+| `solo_consulta` | `BooleanField` | — | Enables read-only mode (see below) |
+| `permiso_control` | `BooleanField` | — | Access to Control de Entradas |
+| `permiso_control_personas` | `BooleanField` | — | Access to Control de Personas |
+| `permiso_reportes` | `BooleanField` | — | Access to Reportes |
+| `permiso_auditoria` | `BooleanField` | — | Access to Auditoría |
+| `permiso_usuarios` | `BooleanField` | — | Access to Gestión de Usuarios |
+
+## Two Access Tiers
+
+Planta Milenio separates users into two functional tiers:
+
+**Full-access users** have one or more permission flags set to `True` and `solo_consulta = False`. They can read data and submit forms — registering entries, logging person access, editing transport records, and managing other users.
+
+**Read-only users (`solo_consulta = True`)** can open any view their permission flags allow, but every HTTP POST is blocked immediately. The view redirects them back with an error message such as *"No tiene permisos para registrar ingresos. Solo puede consultar y descargar el historial."* This tier is designed for auditors or supervisors who need visibility without the ability to modify any record.
+
+<Note>
+`solo_consulta` is additive to permission flags. A user must still have the relevant `permiso_*` flag enabled to reach a view — `solo_consulta` only restricts write operations within views they are already permitted to see.
+</Note>
+
+## How Permissions Work
+
+Access control is enforced at the view level through five independent boolean flags. Each flag maps to exactly one module URL. When a request arrives, the view checks `request.session['user_admin_id']`, loads the corresponding `User_admin` object, and verifies the relevant flag before rendering anything.
+
+| Permission field | Module | URL |
+|---|---|---|
+| `permiso_control` | Control de Entradas | `/control/` |
+| `permiso_control_personas` | Control de Personas | `/control_personas/` |
+| `permiso_reportes` | Reportes | `/reportes/` |
+| `permiso_auditoria` | Auditoría | `/auditoria/` |
+| `permiso_usuarios` | Gestión de Usuarios | `/usuarios/` |
+
+Flags are completely independent — a user can have any combination. A flag set to `False` causes the view to redirect immediately to the login page with an access-denied message; no partial rendering occurs.
+
+## Account Locking with `bloqueado`
+
+Setting `bloqueado = True` on a `User_admin` record prevents that user from completing the login flow. The login view checks this flag before verifying the password. If `bloqueado` is `True`, the session is never written and the user sees the message *"Usuario bloqueado"*. This is useful for temporarily disabling access without deleting the account or changing its credentials.
+
+## Session-Based Authentication
+
+Planta Milenio does not use Django's authentication middleware or `@login_required` decorator. Instead, a successful login stores the user's primary key in the session:
+
+```python
+request.session['user_admin_id'] = user.id
+```
+
+Every protected view reads this key at the top of the function:
+
+```python
+user_id = request.session.get('user_admin_id')
+if not user_id:
+    messages.error(request, 'Debe iniciar sesión primero')
+    return redirect('login')
+```
+
+Logging out calls `request.session.flush()`, which destroys the entire session. There is no token, no JWT, and no third-party authentication backend involved.
+
+## Explore Further
+
+<CardGroup cols={2}>
+  <Card
+    title="Create Users"
+    icon="user-plus"
+    href="/users/create-users"
+  >
+    Bootstrap the first admin user with the `CreateUser.py` CLI script, and manage users through the web panel at `/usuarios/`.
+  </Card>
+  <Card
+    title="Permissions Reference"
+    icon="shield-check"
+    href="/users/permissions"
+  >
+    Detailed breakdown of every permission flag, read-only mode behavior, and how to configure account locking.
+  </Card>
+</CardGroup>

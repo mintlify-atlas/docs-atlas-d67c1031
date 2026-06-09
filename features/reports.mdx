@@ -1,0 +1,111 @@
+---
+title: "Generate Operational Reports and PDF Exports"
+sidebarTitle: "Reports"
+description: "Use the Reportes module to view and download PDF reports of raw-material intake history and personnel access records, filtered by date range."
+---
+
+The **Reportes** module provides a unified view of operational data across two record types: raw-material intake history from the `Historial` model and personnel access history from the `AccesoPersona` model. Supervisors can filter either dataset by date range, review the records on screen, and download a formatted PDF suitable for filing or external review. All PDFs are generated server-side with WeasyPrint and served as direct file downloads.
+
+## Required Permission
+
+Access requires the `permiso_reportes` permission. Users without it are redirected on all requests to `/reportes/`.
+
+## Report Types
+
+Switch between report types using the `tipo` query parameter. The default when `tipo` is omitted is `materia_prima`.
+
+<Tabs>
+  <Tab title="Materia Prima">
+    **URL parameter:** `?tipo=materia_prima`
+
+    Queries the local `Historial` table — the same records created by the Control de Entradas module. Each row in the report shows:
+
+    | Column | Description |
+    |---|---|
+    | Vehicle plate | `Vehiculo_Placa` of the entering vehicle |
+    | Order number | `fact_num` of the associated purchase order |
+    | Product description | Product line registered at entry |
+    | Entry timestamp | `hora_entrada` auto-set at registration |
+    | Pending amount | Remaining quantity on the order at time of entry |
+
+    ```
+    GET /reportes/?tipo=materia_prima
+    GET /reportes/?tipo=materia_prima&fecha_inicio=2025-01-01&fecha_fin=2025-01-31
+    ```
+  </Tab>
+  <Tab title="Personal">
+    **URL parameter:** `?tipo=personal`
+
+    Queries the local `AccesoPersona` table — the records created by the Control de Personas module. Each row shows:
+
+    | Column | Description |
+    |---|---|
+    | Name | Visitor's `nombre` and `apellido` |
+    | Cedula | National ID number |
+    | Company | `empresa` if provided |
+    | Entry time | `hora_entrada` |
+    | Exit time | `hora_salida` (blank if visit is still open) |
+    | Visit duration | `tiempo_visita` in minutes |
+    | Approval status | `aprobada` or `negada` |
+
+    ```
+    GET /reportes/?tipo=personal
+    GET /reportes/?tipo=personal&fecha_inicio=2025-01-01&fecha_fin=2025-01-31
+    ```
+  </Tab>
+</Tabs>
+
+## Date Filtering
+
+Both report types accept `fecha_inicio` and `fecha_fin` as optional ISO-format date parameters. Filtering is applied on the entry timestamp field for both models.
+
+```
+GET /reportes/?tipo=materia_prima&fecha_inicio=2025-03-01&fecha_fin=2025-03-31
+GET /reportes/?tipo=personal&fecha_inicio=2025-03-01&fecha_fin=2025-03-31
+```
+
+Both parameters are optional independently. You can supply only `fecha_inicio` (to see everything from a start date forward) or only `fecha_fin` (to see everything up to a date). When neither is supplied, the view returns up to 200 records.
+
+## Downloading PDFs
+
+Each report type has a dedicated PDF download endpoint. Append the same date filters you used in the on-screen view to get a matching PDF export.
+
+```
+# Raw material intake PDF
+GET /reporte_pdf/materia_prima/?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+
+# Personnel access PDF
+GET /reporte_pdf/personal/?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+
+# Historial PDF (alternative endpoint)
+GET /reporte_historial/?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
+```
+
+All three endpoints return a response with:
+- `Content-Type: application/pdf`
+- `Content-Disposition: attachment` — the browser will prompt a file download rather than attempting to display the PDF inline
+
+PDF generation is handled by **WeasyPrint** on the server. The rendered document uses the same data query as the on-screen view, so what you see in the table is exactly what appears in the downloaded file.
+
+<Tip>
+  PDF exports are capped at **200 records**. If your date range produces more than 200 entries, the PDF will be truncated. To capture all records for a high-volume period, split the export into shorter sub-ranges — for example, weekly rather than monthly — and download one file per interval.
+</Tip>
+
+## Quick Reference
+
+<CardGroup cols={2}>
+  <Card title="Materia Prima Report" icon="box">
+    On-screen view: `GET /reportes/?tipo=materia_prima`
+
+    PDF export: `GET /reporte_pdf/materia_prima/`
+
+    Source model: `Historial` (local SQLite)
+  </Card>
+  <Card title="Personal Report" icon="users">
+    On-screen view: `GET /reportes/?tipo=personal`
+
+    PDF export: `GET /reporte_pdf/personal/`
+
+    Source model: `AccesoPersona` (local SQLite)
+  </Card>
+</CardGroup>

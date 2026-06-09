@@ -1,20 +1,68 @@
 ---
-title: "Introduction"
-description: "Welcome to your project"
+title: "Planta Milenio: Plant Operations Management System"
+sidebarTitle: "Home"
+description: "Planta Milenio is a Django-based operations platform for industrial plants, covering raw-material intake, personnel access control, transport auditing, and PDF reporting."
 ---
 
-Write a short description of your product here. What it does, who it's for, and what they can accomplish with it.
+Planta Milenio is a full-stack Django 5 web application built to manage day-to-day operations at an industrial plant. It connects a local SQLite database with two external SQL Server instances (Profit ERP and Ceres Romana) to give operators a unified control panel for tracking purchase orders, vehicle movements, visitor access, and audit trails — all from a browser.
 
-<Tip>
-  Ready to make this your own? Start by editing this page. Update your `docs.json` file to customize your site. Then fill out the [Quickstart](/quickstart) page.
-</Tip>
+<CardGroup cols={2}>
+  <Card title="Installation" icon="download" href="/installation">
+    Set up Python, the virtual environment, and all dependencies in minutes.
+  </Card>
+  <Card title="Configuration" icon="gear" href="/configuration">
+    Connect your SQL Server databases and configure Django settings.
+  </Card>
+  <Card title="User Management" icon="users" href="/users/overview">
+    Create admin users, assign module permissions, and manage access levels.
+  </Card>
+  <Card title="Core Features" icon="table-columns" href="/features/raw-material-control">
+    Explore raw-material intake, personnel access, audit, and report views.
+  </Card>
+  <Card title="Data Models" icon="database" href="/data-models/user-admin">
+    Understand the underlying models: users, order history, and visitor records.
+  </Card>
+  <Card title="API Reference" icon="code" href="/api/overview">
+    JSON autocomplete endpoints and PDF report download routes.
+  </Card>
+</CardGroup>
 
-<Card title="Quickstart" icon="rocket" href="/quickstart">
-  This card links to the quickstart page in your project.
-</Card>
-<Card title="Components" icon="puzzle-piece" href="https://mintlify.com/docs/components">
-  Add cards, callouts, steps, tabs, and more to design and structure your pages.
-</Card>
-<Card title="Settings" icon="gear" href="https://mintlify.com/docs/organize/settings">
-  Set your site name, branding, and navigation in the `docs.json` file.
-</Card>
+## How it works
+
+<Steps>
+  <Step title="Install and configure">
+    Clone the repository, create a virtual environment, install dependencies from `requirements.txt`, and point the `DATABASES` setting at your SQL Server instances.
+  </Step>
+  <Step title="Create your first admin user">
+    Run `CreateUser.py` from the project root to bootstrap the initial credentials — no Django admin panel required.
+  </Step>
+  <Step title="Log in and assign permissions">
+    Sign in at `/login/`, navigate to **Usuarios**, and grant each operator access only to the modules they need (`permiso_control`, `permiso_reportes`, etc.).
+  </Step>
+  <Step title="Start tracking operations">
+    Use **Control de Entradas** to register purchase orders, **Control de Personas** to log visitor access, and **Auditoría** to review transport records — then download PDF reports from the **Reportes** view.
+  </Step>
+</Steps>
+
+## Key capabilities
+
+<CardGroup cols={3}>
+  <Card title="Raw Material Intake" icon="truck-ramp-box">
+    Validate purchase orders against the Profit ERP and register vehicle entries in the local history log.
+  </Card>
+  <Card title="Personnel Access" icon="id-badge">
+    Log visitor entry and exit with ID, company, host, and visit duration — approve or deny in one click.
+  </Card>
+  <Card title="Transport Audit" icon="magnifying-glass">
+    Browse and edit `orden_profit_transporte` records from Ceres Romana, with inline search and pagination.
+  </Card>
+  <Card title="PDF Reports" icon="file-pdf">
+    Generate dated PDF exports for both material intake and personnel access using WeasyPrint.
+  </Card>
+  <Card title="Role-Based Access" icon="shield-halved">
+    Fine-grained boolean permissions per module plus a read-only `solo_consulta` mode for auditors.
+  </Card>
+  <Card title="Autocomplete APIs" icon="magnifying-glass-plus">
+    AJAX-driven autocomplete endpoints for companies, drivers, vehicles, products, and visitors.
+  </Card>
+</CardGroup>

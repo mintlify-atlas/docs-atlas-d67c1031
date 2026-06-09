@@ -1,0 +1,147 @@
+---
+title: "Deploy Planta Milenio to Production with Gunicorn"
+sidebarTitle: "Production"
+description: "Configure Django settings, run collectstatic, and serve Planta Milenio in production using Gunicorn as the WSGI server behind a reverse proxy."
+---
+
+Planta Milenio ships with development defaults that must be hardened before the application handles real plant operations traffic. This guide walks through the required settings changes, static file collection, and the recommended way to serve the application using Gunicorn — optionally behind an Nginx reverse proxy managed by a systemd service.
+
+## Pre-deployment checklist
+
+Complete every step below before starting Gunicorn in a production environment.
+
+<Steps>
+  <Step title="Rotate the secret key">
+    Replace the default `SECRET_KEY` in `proyecto/settings.py` with a cryptographically random value. You can generate one with Python:
+
+    ```bash
+    python -c "import secrets; print(secrets.token_urlsafe(64))"
+    ```
+
+    Paste the output as the new value of `SECRET_KEY`. Never commit a real secret key to version control.
+  </Step>
+
+  <Step title="Disable debug mode">
+    In `proyecto/settings.py`, change:
+
+    ```python
+    DEBUG = False
+    ```
+
+    This prevents Django from rendering detailed error tracebacks to end users and disables several insecure development conveniences.
+  </Step>
+
+  <Step title="Set ALLOWED_HOSTS">
+    Replace the wildcard with your server's actual IP address or hostname:
+
+    ```python
+    ALLOWED_HOSTS = ['192.168.1.100', 'planta.milenio.local']
+    ```
+
+    Django will reject requests whose `Host` header does not match an entry in this list, protecting against HTTP Host header attacks.
+  </Step>
+
+  <Step title="Collect static files">
+    Run `collectstatic` to copy every static asset from the `assets/` directory and all installed apps into `STATIC_ROOT`, where Nginx (or another web server) can serve them directly:
+
+    ```bash
+    python manage.py collectstatic
+    ```
+
+    Confirm the reported file count looks reasonable before proceeding.
+  </Step>
+
+  <Step title="Apply pending migrations">
+    Ensure the local SQLite database is up to date:
+
+    ```bash
+    python manage.py migrate
+    ```
+
+    This only touches the `default` SQLite database. See [Database Setup](/deployment/database-setup) for details on the SQL Server connections.
+  </Step>
+</Steps>
+
+<Warning>
+  Running with `DEBUG = True` in production exposes full Python tracebacks — including local variable values, file paths, and settings — to anyone who triggers an error. Always set `DEBUG = False` before accepting production traffic.
+</Warning>
+
+## Running with Gunicorn
+
+With the pre-deployment checklist complete, start the application using Gunicorn, which is included in `requirements.txt`:
+
+```bash
+gunicorn proyecto.wsgi:application --bind 0.0.0.0:8000 --workers 2
+```
+
+`--workers 2` is appropriate for a low-concurrency internal plant operations tool. If you observe request queuing under heavier load, increase the worker count — a common formula is `(2 × CPU cores) + 1`. The WSGI entry point `proyecto.wsgi:application` corresponds to the `WSGI_APPLICATION` setting in `proyecto/settings.py`.
+
+<Note>
+  WeasyPrint (used for PDF report generation) requires Pango and Cairo system libraries. On Ubuntu/Debian, install them before starting Gunicorn:
+
+  ```bash
+  apt install libpango-1.0-0 libpangocairo-1.0-0
+  ```
+
+  Without these libraries, any view that renders a PDF will raise a runtime error regardless of whether WeasyPrint itself is installed.
+</Note>
+
+## Nginx reverse proxy (recommended)
+
+Running Gunicorn behind Nginx allows Nginx to serve static files directly from disk — bypassing Python entirely — and to handle TLS termination, connection buffering, and request rate limiting. Create a new site configuration file (for example `/etc/nginx/sites-available/planta_milenio`) with the following content:
+
+```nginx
+server {
+    listen 80;
+    server_name planta.milenio.local;
+
+    location /static/ {
+        alias /path/to/Planta_Milenio/static/;
+    }
+
+    location / {
+        proxy_pass http://127.0.0.1:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+Replace `/path/to/Planta_Milenio/static/` with the absolute path to the `STATIC_ROOT` directory produced by `collectstatic`. Enable the site and reload Nginx:
+
+```bash
+sudo ln -s /etc/nginx/sites-available/planta_milenio /etc/nginx/sites-enabled/
+sudo nginx -t && sudo systemctl reload nginx
+```
+
+When Nginx is in front, bind Gunicorn to `127.0.0.1` only (not `0.0.0.0`) so the application port is not exposed directly to the network.
+
+## Systemd service
+
+A systemd unit file keeps Gunicorn running across reboots and restarts it automatically if it crashes. Create `/etc/systemd/system/planta_milenio.service`:
+
+```ini
+[Unit]
+Description=Planta Milenio Gunicorn
+After=network.target
+
+[Service]
+User=www-data
+WorkingDirectory=/path/to/Planta_Milenio
+ExecStart=/path/to/venv/bin/gunicorn proyecto.wsgi:application --bind 127.0.0.1:8000 --workers 2
+Restart=always
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Replace `/path/to/Planta_Milenio` with the absolute path to the project root and `/path/to/venv` with the absolute path to the virtual environment. Enable and start the service:
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable planta_milenio
+sudo systemctl start planta_milenio
+sudo systemctl status planta_milenio
+```
+
+Use `journalctl -u planta_milenio -f` to tail live logs from the Gunicorn process.

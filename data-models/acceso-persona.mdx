@@ -1,0 +1,124 @@
+---
+title: "AccesoPersona Model: Visitor Access Log"
+sidebarTitle: "Acceso Persona"
+description: "Reference for the AccesoPersona model that records every plant visitor with identity, company, visit purpose, entry/exit timestamps, and approval status."
+---
+
+`AccesoPersona` is the visitor log for Planta Milenio, stored in the local SQLite database (`planta.sqlite3`). Every time a person enters the plant through the Control de Personas module, a new `AccesoPersona` record is created with `hora_entrada` set automatically to the current timestamp. When the visitor leaves, the operator registers the departure: `hora_salida` is set to the current time and `tiempo_visita` is calculated as the difference in minutes between entry and exit. Denied visits are handled at creation time — the record is saved immediately with `hora_salida` equal to the creation timestamp and `tiempo_visita` set to zero.
+
+## Model Definition
+
+```python
+from django.db import models
+
+class AccesoPersona(models.Model):
+    tiempo_visita = models.PositiveIntegerField(null=True, blank=True, help_text="Duración de la visita en minutos")
+    nombre = models.CharField(max_length=100)
+    apellido = models.CharField(max_length=100, blank=True)
+    cedula = models.CharField(max_length=50)
+    empresa = models.CharField(max_length=255, blank=True, null=True)
+    motivo_ingreso = models.CharField(max_length=255, blank=True, null=True)
+    autorizado_por = models.CharField(max_length=100, blank=True, null=True)
+    estado_visita = models.CharField(
+        max_length=10,
+        choices=[('aprobada', 'Aprobada'), ('negada', 'Negada')],
+        default='aprobada'
+    )
+    a_quien_visita = models.CharField(max_length=100, blank=True, null=True)
+    hora_entrada = models.DateTimeField(auto_now_add=True)
+    hora_salida = models.DateTimeField(null=True, blank=True)
+    placa_vehiculo = models.CharField(max_length=20, null=True, blank=True)
+
+    class Meta:
+        verbose_name = 'Acceso Persona'
+        verbose_name_plural = 'Accesos Personas'
+```
+
+## Fields
+
+<ParamField path="nombre" type="string" required>
+  The visitor's first name. Maximum 100 characters. Required at the model level and enforced as required in the entry form.
+</ParamField>
+
+<ParamField path="apellido" type="string">
+  The visitor's surname. Maximum 100 characters. Optional at the model level (`blank=True`), though the entry form typically collects it.
+</ParamField>
+
+<ParamField path="cedula" type="string" required>
+  The visitor's national identity document number. Maximum 50 characters. Required at the model level. Used by the autocomplete endpoint to pre-fill repeat visitors' details.
+</ParamField>
+
+<ParamField path="empresa" type="string">
+  The visitor's company or organisation. Maximum 255 characters. Optional and nullable. Used by the autocomplete endpoint to pre-fill known companies associated with a given `cedula`.
+</ParamField>
+
+<ParamField path="motivo_ingreso" type="string">
+  The stated reason for the visit. Maximum 255 characters. Optional at the model level but treated as required in the entry form to ensure every record has an auditable purpose.
+</ParamField>
+
+<ParamField path="autorizado_por" type="string">
+  The name of the plant employee or manager who authorised the visit. Maximum 100 characters. Optional.
+</ParamField>
+
+<ParamField path="estado_visita" type="string" default="aprobada">
+  The approval status of the visit. Accepts one of two values: `aprobada` (the visitor was allowed entry) or `negada` (the visitor was turned away). Defaults to `aprobada`. When set to `negada` at creation, the view automatically sets `hora_salida` to the current time and `tiempo_visita` to `0`.
+</ParamField>
+
+<ParamField path="a_quien_visita" type="string">
+  The name of the plant employee the visitor is coming to see. Maximum 100 characters. Optional.
+</ParamField>
+
+<ParamField path="hora_entrada" type="datetime">
+  Timestamp set automatically to the current date and time when the record is created (`auto_now_add=True`). Reflects the `America/Caracas` timezone (`UTC-4`) of the application server. This field is not editable after creation.
+</ParamField>
+
+<ParamField path="hora_salida" type="datetime">
+  Timestamp recorded when the visitor's departure is registered. Null until the exit is processed. For denied visits this is set to the creation time immediately. Used together with `hora_entrada` to calculate `tiempo_visita`.
+</ParamField>
+
+<ParamField path="placa_vehiculo" type="string">
+  The license plate of the vehicle the visitor arrived in. Maximum 20 characters. Optional and nullable — visitors who arrive on foot leave this blank.
+</ParamField>
+
+<ParamField path="tiempo_visita" type="positive integer">
+  Duration of the visit in minutes, calculated on departure as `floor((hora_salida − hora_entrada).total_seconds() / 60)`. Null until exit is recorded, except for denied visits where it is set to `0` immediately at creation.
+</ParamField>
+
+## Querying Examples
+
+Use `hora_salida__isnull=True` to find visitors currently on-site, and the `.update()` path for recording departures to avoid race conditions from concurrent requests.
+
+```python
+from app2.models import AccesoPersona
+from django.utils import timezone
+
+# Active visitors (no exit recorded, approved)
+active = AccesoPersona.objects.filter(
+    hora_salida__isnull=True,
+    estado_visita='aprobada'
+)
+
+# Record a departure
+hora_salida = timezone.now()
+acceso = AccesoPersona.objects.get(id=42)
+tiempo = int((hora_salida - acceso.hora_entrada).total_seconds() // 60)
+AccesoPersona.objects.filter(id=42, hora_salida__isnull=True).update(
+    hora_salida=hora_salida,
+    tiempo_visita=tiempo
+)
+```
+
+## Denied Visit Behaviour
+
+When `estado_visita` is set to `'negada'` at the time of record creation, the view does not wait for a separate exit registration step. Instead, it immediately sets `hora_salida` to the current timestamp and `tiempo_visita` to `0`. This means denied visits always appear as closed records in the visitor log and are never included in queries for currently active visitors (those with `hora_salida__isnull=True`).
+
+## Autocomplete Integration
+
+<Tip>
+  The Control de Personas entry form integrates two autocomplete endpoints that query existing `AccesoPersona` records to speed up data entry for repeat visitors:
+
+  - **`/autocomplete/persona/cedula/`** — returns known `cedula` values matching the typed prefix, along with the associated `nombre`, `apellido`, and `empresa` so the remaining fields are filled automatically.
+  - **`/autocomplete/persona/empresa/`** — returns known company names matching the typed prefix for quick selection in the `empresa` field.
+
+  These endpoints reduce transcription errors for frequent contractors and delivery personnel who visit the plant regularly.
+</Tip>

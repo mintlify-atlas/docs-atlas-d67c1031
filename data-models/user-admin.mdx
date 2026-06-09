@@ -1,0 +1,94 @@
+---
+title: "User_admin Model: Authentication and Permission Fields"
+sidebarTitle: "User Admin"
+description: "Reference for the User_admin model that stores Planta Milenio operator credentials, per-module boolean permissions, read-only mode, and account locking."
+---
+
+Planta Milenio uses a fully custom authentication model called `User_admin` rather than Django's built-in `AbstractUser` or `AbstractBaseUser`. All operator records are stored in the local SQLite database (`planta.sqlite3`) and authentication is session-based: after a successful login the user's primary key is written to the session under the key `user_admin_id`. Password storage supports both PBKDF2-hashed passwords created via `make_password` and a legacy plain-text fallback checked at login time with `check_password`.
+
+## Model Definition
+
+```python
+from django.db import models
+
+class User_admin(models.Model):
+    nombre = models.CharField(max_length=100, unique=True)
+    password = models.CharField(max_length=128)
+    bloqueado = models.BooleanField(default=False)
+    email = models.EmailField(max_length=150, unique=True, null=True, blank=True)
+    telefono = models.CharField(max_length=20, null=True, blank=True)
+    solo_consulta = models.BooleanField(default=False)
+    permiso_control = models.BooleanField(default=False)
+    permiso_control_personas = models.BooleanField(default=False)
+    permiso_reportes = models.BooleanField(default=False)
+    permiso_auditoria = models.BooleanField(default=False)
+    permiso_usuarios = models.BooleanField(default=False)
+```
+
+## Fields
+
+<ParamField path="nombre" type="string" required>
+  The operator's login username. Maximum 100 characters. Must be unique across all `User_admin` records — this is the identifier entered on the login form.
+</ParamField>
+
+<ParamField path="password" type="string" required>
+  The operator's password. Maximum 128 characters. New accounts should always store a PBKDF2 hash produced by `django.contrib.auth.hashers.make_password`. A legacy plain-text comparison path exists in the login view for older records but is deprecated.
+</ParamField>
+
+<ParamField path="bloqueado" type="boolean" default="false">
+  When `True`, the login view rejects this account regardless of the password supplied. Use this to suspend access without deleting the record. Defaults to `False`.
+</ParamField>
+
+<ParamField path="email" type="string">
+  Optional contact email address. Maximum 150 characters. Must be unique when provided; the column accepts `NULL` so multiple records may omit it.
+</ParamField>
+
+<ParamField path="telefono" type="string">
+  Optional contact phone number. Maximum 20 characters. No format validation is enforced at the model level.
+</ParamField>
+
+<ParamField path="solo_consulta" type="boolean" default="false">
+  When `True`, the operator is in read-only mode. Views that mutate state check this flag and reject POST requests with a permission error. Defaults to `False`.
+</ParamField>
+
+<ParamField path="permiso_control" type="boolean" default="false">
+  Grants access to the raw-material entry module at `/control/`. Without this flag the view redirects the operator to the access-denied page.
+</ParamField>
+
+<ParamField path="permiso_control_personas" type="boolean" default="false">
+  Grants access to the visitor access control module at `/control_personas/`. Without this flag the view redirects the operator to the access-denied page.
+</ParamField>
+
+<ParamField path="permiso_reportes" type="boolean" default="false">
+  Grants access to the reports module at `/reportes/`. Without this flag the view redirects the operator to the access-denied page.
+</ParamField>
+
+<ParamField path="permiso_auditoria" type="boolean" default="false">
+  Grants access to the audit log module at `/auditoria/`. Without this flag the view redirects the operator to the access-denied page.
+</ParamField>
+
+<ParamField path="permiso_usuarios" type="boolean" default="false">
+  Grants access to the user management module at `/usuarios/`, where operators can create, edit, and block other `User_admin` accounts. Without this flag the view redirects the operator to the access-denied page.
+</ParamField>
+
+## Creating a User via the ORM
+
+Use `make_password` from Django's auth hashers to ensure the password is stored securely. Pass any combination of `permiso_*` flags as keyword arguments; unspecified flags default to `False`.
+
+```python
+from app2.models import User_admin
+from django.contrib.auth.hashers import make_password
+
+user = User_admin.objects.create(
+    nombre='operador1',
+    password=make_password('secure-password'),
+    permiso_control=True,
+    permiso_reportes=True,
+)
+```
+
+## Permission Flag Behaviour
+
+<Note>
+  `solo_consulta` and the individual `permiso_*` flags are orthogonal. A user can have `solo_consulta=True` **and** `permiso_control=True` at the same time — the permission flag allows them to navigate to the control view, but `solo_consulta` prevents any POST action within it. In practice this is useful for supervisors who need to monitor entries in real time without being able to create or modify records.
+</Note>

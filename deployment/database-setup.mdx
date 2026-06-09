@@ -1,0 +1,134 @@
+---
+title: "Database Setup: SQLite and SQL Server Connections"
+sidebarTitle: "Database Setup"
+description: "Configure Planta Milenio's three database connections: local SQLite for users and logs, and two SQL Server instances via mssql-django and FreeTDS."
+---
+
+Planta Milenio uses three database connections simultaneously: a local SQLite file that stores application users and audit logs, and two Microsoft SQL Server databases that hold plant operations data. The SQLite database is fully managed by Django migrations, while the SQL Server databases are accessed via raw SQL queries and stored procedures without any migration involvement.
+
+## Local SQLite database (`default`)
+
+The `default` connection uses Django's built-in SQLite backend and requires no additional configuration beyond what is already in `proyecto/settings.py`. It stores the following application models:
+
+- `User_admin` — application user accounts created by `CreateUser.py`
+- `Historial` — activity log entries
+- `AccesoPersona` — personnel access records
+
+The database file `planta.sqlite3` is written to the project root directory on first migration. To create the schema, activate your virtual environment and run:
+
+```bash
+python manage.py migrate
+```
+
+No drivers, credentials, or network access are needed for this connection.
+
+<Warning>
+  `migrate` only touches the `default` SQLite database. The `sqlserver` and `ceres_romana` connections are read and written exclusively via raw SQL and stored procedures — Django never applies migrations to them. Running `migrate` against those databases is neither required nor supported.
+</Warning>
+
+## SQL Server connections
+
+Both SQL Server databases use the `mssql` engine provided by `mssql-django`, which communicates with the server through `pyodbc` and the FreeTDS ODBC driver. The complete `DATABASES` configuration in `proyecto/settings.py` looks like this:
+
+```python
+DATABASES = {
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'planta.sqlite3',
+    },
+    'sqlserver': {
+        'ENGINE': 'mssql',
+        'NAME': 'AGRBSS_A',
+        'USER': 'profit',
+        'PASSWORD': '<password>',
+        'HOST': '<sql-server-host>',
+        'PORT': '1433',
+        'OPTIONS': {
+            'driver': 'FreeTDS',
+            'tds_version': '7.4',
+            'host_is_server': True,
+        },
+        'TIME_ZONE': 'UTC',
+    },
+    'ceres_romana': {
+        'ENGINE': 'mssql',
+        'NAME': 'ceres_romana',
+        'USER': 'profit',
+        'PASSWORD': '<password>',
+        'HOST': '<sql-server-host>',
+        'PORT': '1433',
+        'OPTIONS': {
+            'driver': 'FreeTDS',
+            'tds_version': '7.4',
+            'host_is_server': True,
+        },
+        'TIME_ZONE': 'UTC',
+    },
+}
+```
+
+Replace `<password>` and `<sql-server-host>` with the actual credentials and hostname or IP address for each server. Both connections authenticate as the `profit` SQL Server login and communicate over port 1433.
+
+<Note>
+  `mssql-django` 1.6 — the version pinned in `requirements.txt` — is the first release with official Django 5 support. Earlier versions of `mssql-django` are not compatible with Django 5.x.
+</Note>
+
+## Installing FreeTDS on Linux
+
+FreeTDS provides the ODBC driver entry referenced as `'driver': 'FreeTDS'` in the `OPTIONS` dictionary. Install the required system packages on Ubuntu or Debian:
+
+```bash
+# Ubuntu/Debian
+sudo apt install freetds-dev freetds-bin unixodbc unixodbc-dev
+```
+
+After installation, verify that the SQL Server host is reachable and that the `profit` credentials are accepted:
+
+```bash
+tsql -H <sql-server-host> -p 1433 -U profit -P <password>
+```
+
+A successful connection displays a `1>` prompt. Type `quit` to exit. If the connection is refused, check that port 1433 is open in the server's firewall and that the TDS version `7.4` is supported by the target SQL Server instance (SQL Server 2012 and later).
+
+## Installing the Microsoft ODBC Driver on Windows
+
+On Windows, replace the FreeTDS driver with Microsoft's native ODBC driver. Install **ODBC Driver 17 for SQL Server** (or a later version) following the [official Microsoft installation guide](https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server). After installation, update the `driver` key in both SQL Server `OPTIONS` dictionaries:
+
+```python
+'OPTIONS': {
+    'driver': 'ODBC Driver 17 for SQL Server',
+    'host_is_server': True,
+},
+```
+
+Remove the `tds_version` key, as it is specific to FreeTDS and has no meaning for the Microsoft driver.
+
+## Required stored procedures on `ceres_romana`
+
+The application calls two stored procedures in the Ceres Romana database. These procedures must exist and be executable by the `profit` login before the transport registration and audit editing workflows will function:
+
+- `dbo.Orden_Profit_Transporte_Insert` — invoked when registering a new transport entry
+- `dbo.Orden_Profit_Transporte_Update` — invoked when editing an existing audit record
+
+If either procedure is missing, the affected view will raise a database error at runtime. Coordinate with the Ceres Romana database administrator to confirm both procedures are present and that the `profit` user has `EXECUTE` permission on them.
+
+## Verifying connectivity
+
+After configuring credentials and installing the driver, confirm that Django can actually reach each SQL Server database. Open the Django shell:
+
+```bash
+python manage.py shell
+```
+
+Then run a quick probe against the `ceres_romana` connection:
+
+```python
+# Run in Django shell: python manage.py shell
+from django.db import connections
+
+with connections['ceres_romana'].cursor() as cursor:
+    cursor.execute('SELECT TOP 1 Orden FROM orden_profit')
+    print(cursor.fetchone())
+```
+
+A returned tuple confirms the connection, authentication, and driver are all working correctly. Repeat with `connections['sqlserver']` and an appropriate table name to verify the `AGRBSS_A` connection in the same way.
