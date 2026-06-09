@@ -32,6 +32,7 @@ DATABASES = {
             'tds_version': '7.4',
             'host_is_server': True,
         },
+        'TIME_ZONE': 'UTC',
     },
     'ceres_romana': {
         'ENGINE': 'mssql',
@@ -45,6 +46,7 @@ DATABASES = {
             'tds_version': '7.4',
             'host_is_server': True,
         },
+        'TIME_ZONE': 'UTC',
     },
 }
 ```
@@ -115,12 +117,18 @@ CSS stylesheets, JavaScript files, and images are served from the `assets/` dire
 
 ```python
 STATIC_URL = '/static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'static')  # destination for collectstatic
 STATICFILES_DIRS = [BASE_DIR / "assets"]
+
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 ```
 
 `STATICFILES_DIRS` tells Django where to look for static files when running `collectstatic` or when serving them directly in development mode. All front-end assets — custom styles, plant logos, icon sets — live under `assets/`.
 
-In production, run `python manage.py collectstatic` to copy all static files into the directory pointed to by `STATIC_ROOT`, then configure your web server (Nginx, Apache) to serve that directory directly. Never serve static files through the Django process in production.
+`STATIC_ROOT` is the output directory that `collectstatic` writes to. It must be different from every directory listed in `STATICFILES_DIRS`. `MEDIA_ROOT` is the upload destination for any user-uploaded files (such as profile images).
+
+In production, run `python manage.py collectstatic` to copy all static files into `STATIC_ROOT`, then configure your web server (Nginx, Apache) to serve that directory directly. Never serve static files through the Django process in production.
 
 ## Security Settings for Production
 

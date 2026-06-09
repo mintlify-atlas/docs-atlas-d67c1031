@@ -1,7 +1,7 @@
 ---
 title: "Planta Milenio: Plant Operations Management System"
 sidebarTitle: "Introduction"
-description: "Planta Milenio is a Django 5 web application for managing raw-material intake, personnel access control, transport auditing, and operational reports at industrial plants."
+description: "Planta Milenio is a Django 5 web application for raw-material intake, personnel access control, transport auditing, and reports at industrial plants."
 ---
 
 Planta Milenio is a web-based operations management system built with Django 5 that gives industrial plant teams a single, unified control panel for every activity that happens at the gate and on the floor — from weighing incoming raw-material trucks to tracking which staff members are currently on site. It bridges the gap between a fast local SQLite database and two remote SQL Server instances (the Profit ERP database `AGRBSS_A` and the transport database `ceres_romana`), so that plant-floor decisions are always backed by live ERP and logistics data.
@@ -29,7 +29,7 @@ Planta Milenio is a standard Django 5 project that talks to three databases simu
 
 PDF generation (weight tickets, audit summaries, access reports) is handled by **WeasyPrint**, which renders Django HTML templates to press-ready PDF documents without any external service.
 
-```
+```text
 Browser
   │
   ▼

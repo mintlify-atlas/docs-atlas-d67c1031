@@ -1,7 +1,7 @@
 ---
-title: "Role-Based Permissions and Access Control"
+title: "Permission Flags and Access Control in Planta Milenio"
 sidebarTitle: "Permissions"
-description: "Configure per-module boolean permissions for Planta Milenio users, understand read-only mode, and manage account locking."
+description: "Configure per-module boolean permission flags for Planta Milenio operator accounts, understand solo_consulta read-only mode, and control account locking."
 ---
 
 Planta Milenio's access control system is built on five independent boolean flags stored directly on each `User_admin` record. There are no roles, no groups, and no inherited privileges — every flag is evaluated individually at the top of each view function. A user can hold any combination of flags, enabling fine-grained access that fits the operational responsibilities of each operator.

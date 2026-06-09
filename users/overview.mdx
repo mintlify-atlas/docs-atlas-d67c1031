@@ -1,7 +1,7 @@
 ---
-title: "User Management in Planta Milenio"
+title: "Admin User Model and Session Auth in Planta Milenio"
 sidebarTitle: "Overview"
-description: "Understand how Planta Milenio manages admin users with per-module boolean permissions, read-only mode, and account locking."
+description: "Understand how Planta Milenio manages operator accounts: the User_admin model fields, custom session-based auth, and per-module boolean permissions."
 ---
 
 Planta Milenio uses a custom `User_admin` model to manage all operator accounts. This model is completely independent from Django's built-in `User` and `auth` framework — there are no Django groups, no `is_staff` flag, and no `django.contrib.auth` middleware involved. Authentication is handled entirely through a custom session key (`user_admin_id`) that the login view writes to the session after verifying credentials with `check_password`.

@@ -4,31 +4,33 @@ sidebarTitle: "Autocomplete"
 description: "Reference for all GET autocomplete endpoints in Planta Milenio that return JSON arrays for company, vehicle, driver, product, destination, and visitor field suggestions."
 ---
 
-Planta Milenio provides 12 autocomplete endpoints used by its frontend forms to deliver real-time field suggestions as the user types. All 12 endpoints are `GET`-only, accept a single `q` query parameter containing the search string, and return a JSON array of matching results. Results are filtered using case-insensitive matching against the relevant database columns. All endpoints require an active Django session and return at most 10 results per request.
+Planta Milenio provides 12 autocomplete endpoints used by its frontend forms to deliver real-time field suggestions as the user types. All 12 endpoints are `GET`-only, accept a single `q` query parameter containing the search string, and return a JSON array of matching results. All endpoints return at most 10 results per request. None of these endpoints perform a session or permission check — they are open to any request that reaches the Django application.
 
 ## Shared Query Parameter
 
 All autocomplete endpoints accept the following query parameter:
 
 <ParamField query="q" type="string" required>
-  The search term. Results are filtered using case-insensitive `ILIKE` / `LIKE`
-  matching against the relevant column(s). Pass an empty string to retrieve the
-  default result set (behaviour varies by endpoint — see individual endpoint
-  notes below).
+  The search term. Transport and logistics endpoints filter using SQL Server
+  `LIKE` matching (e.g. `WHERE column LIKE '%q%'`). Visitor/personnel endpoints
+  use Django ORM `icontains`, which is case-insensitive on the local SQLite
+  database. Passing an empty string returns an empty array for all endpoints
+  except `/autocomplete/destino/`, which returns all destinations when `q` is
+  empty.
 </ParamField>
 
 ---
 
 ## Transport and Logistics Endpoints
 
-These six endpoints query the external **Ceres Romana** database and are used to populate fields on the raw-material intake and dispatch forms.
+These six endpoints query the external **Ceres Romana** SQL Server database and are used to populate fields on the raw-material intake and dispatch forms. All transport endpoints return an empty array when `q` is empty (except `destino` — see below).
 
 ### GET /autocomplete/empresa/
 
-Searches the `empresa` table by `Empresa_Rif` or `Empresa_Nombre`. Both fields are matched independently, and any record where either field matches is returned.
+Searches the `empresa` table by `Empresa_Rif` or `Empresa_Nombre` using `LIKE`. Both fields are matched independently, and any record where either field matches is returned.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/empresa/?q=agro'
+curl 'http://localhost:8000/autocomplete/empresa/?q=agro'
 ```
 
 ```json
@@ -51,10 +53,10 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/empresa/?q=agro'
 
 ### GET /autocomplete/chuto/
 
-Searches the `Vehiculo` table by `Vehiculo_placa` (tractor-unit licence plate).
+Searches the `Vehiculo` table by `Vehiculo_placa` (tractor-unit licence plate) using `LIKE`.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/chuto/?q=ABC'
+curl 'http://localhost:8000/autocomplete/chuto/?q=ABC'
 ```
 
 ```json
@@ -77,10 +79,10 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/chuto/?q=ABC'
 
 ### GET /autocomplete/tanque/
 
-Searches the `Vehiculo_Remolque` table by `Vehiculo_Remolque_Placa` (tank trailer licence plate).
+Searches the `Vehiculo_Remolque` table by `Vehiculo_Remolque_Placa` (tank trailer licence plate) using `LIKE`.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/tanque/?q=XYZ'
+curl 'http://localhost:8000/autocomplete/tanque/?q=XYZ'
 ```
 
 ```json
@@ -103,10 +105,10 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/tanque/?q=XYZ'
 
 ### GET /autocomplete/destino/
 
-Searches the `Destino` table by `Destino_Nombre`. If `q` is empty, **all** destinations are returned rather than an empty array, making it suitable for populating an initial dropdown on page load.
+Searches the `Destino` table by `Destino_Nombre` using `LIKE`. If `q` is empty, **all** destinations are returned rather than an empty array, making it suitable for populating an initial dropdown on page load.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/destino/?q=norte'
+curl 'http://localhost:8000/autocomplete/destino/?q=norte'
 ```
 
 ```json
@@ -125,14 +127,20 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/destino/?q=norte'
   Optional description; may be an empty string.
 </ResponseField>
 
+<Note>
+  This is the only transport endpoint that returns results for an empty `q`.
+  Sending `GET /autocomplete/destino/?q=` returns every destination in the
+  table, ordered by `Destino_Nombre`.
+</Note>
+
 ---
 
 ### GET /autocomplete/conductor/
 
-Searches the `conductor` table by `Conductor_Cedula` (national ID number).
+Searches the `conductor` table by `Conductor_Cedula` (national ID number) using `LIKE`.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/conductor/?q=V-123'
+curl 'http://localhost:8000/autocomplete/conductor/?q=V-123'
 ```
 
 ```json
@@ -164,17 +172,17 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/conductor/?q=V-123'
   Optional notes field; may be an empty string.
 </ResponseField>
 <ResponseField name="telf" type="string">
-  Driver's contact phone number.
+  Driver's contact phone number. The field key is `telf`, not `telefono`.
 </ResponseField>
 
 ---
 
 ### GET /autocomplete/producto/
 
-Searches the `PRODUCTO` table by `Producto_Codigo` or `Producto_Nombre`. Returns the top 10 matching products.
+Searches the `PRODUCTO` table in Ceres Romana by `Producto_Codigo` or `Producto_Nombre` using SQL Server `LIKE` (case sensitivity depends on the database collation). Returns the top 10 matching products via `SELECT TOP 10`.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/producto/?q=maiz'
+curl 'http://localhost:8000/autocomplete/producto/?q=maiz'
 ```
 
 ```json
@@ -197,16 +205,14 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/producto/?q=maiz'
 
 ## Visitor and Personnel Endpoints
 
-These six endpoints query the local SQLite database via the `AccesoPersona` model and are used to populate suggestion fields on the visitor-access control form. Each endpoint targets a single field on the model, returning a plain JSON array of matching string values (not objects).
-
-All six endpoints return at most 10 results.
+These six endpoints query the local SQLite database via the `AccesoPersona` model and are used to populate suggestion fields on the visitor-access control form. Each endpoint targets a single field on the model and returns a plain JSON array of matching string values (not objects). All six use `icontains` (case-insensitive) matching and return at most 10 distinct results. An empty `q` returns an empty array for all six endpoints.
 
 ### GET /autocomplete/persona/nombre/
 
 Searches `AccesoPersona.nombre` for matching first names.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/nombre/?q=jua'
+curl 'http://localhost:8000/autocomplete/persona/nombre/?q=jua'
 ```
 
 ```json
@@ -220,7 +226,7 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/nombre/?q=jua'
 Searches `AccesoPersona.apellido` for matching surnames.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/apellido/?q=gar'
+curl 'http://localhost:8000/autocomplete/persona/apellido/?q=gar'
 ```
 
 ```json
@@ -234,7 +240,7 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/apellido/?q=gar'
 Searches `AccesoPersona.cedula` for matching national ID numbers.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/cedula/?q=V-12'
+curl 'http://localhost:8000/autocomplete/persona/cedula/?q=V-12'
 ```
 
 ```json
@@ -248,7 +254,7 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/cedula/?q=V-12'
 Searches `AccesoPersona.placa_vehiculo` for matching visitor vehicle plates.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/placa/?q=ABC'
+curl 'http://localhost:8000/autocomplete/persona/placa/?q=ABC'
 ```
 
 ```json
@@ -259,10 +265,10 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/placa/?q=ABC'
 
 ### GET /autocomplete/persona/empresa/
 
-Searches `AccesoPersona.empresa` for matching visitor company names.
+Searches `AccesoPersona.empresa` for matching visitor company names. An empty `q` returns an empty array (the view applies an `if q:` guard before querying).
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/empresa/?q=corp'
+curl 'http://localhost:8000/autocomplete/persona/empresa/?q=corp'
 ```
 
 ```json
@@ -273,10 +279,10 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/empresa/?q=corp'
 
 ### GET /autocomplete/persona/autorizado_por/
 
-Searches `AccesoPersona.autorizado_por` for matching authoriser names or departments.
+Searches `AccesoPersona.autorizado_por` for matching authoriser names or departments. Unlike the other persona endpoints, this endpoint queries even when `q` is empty — it applies no `if q:` guard — and returns up to 10 distinct non-empty values from the `autorizado_por` column.
 
 ```bash
-curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/autorizado_por/?q=ger'
+curl 'http://localhost:8000/autocomplete/persona/autorizado_por/?q=ger'
 ```
 
 ```json
@@ -287,23 +293,20 @@ curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/autorizado_por/?
 
 ## Full curl Example
 
-The following sequence shows a complete authenticated autocomplete flow — logging in, then querying two different endpoints:
+The following sequence shows a complete autocomplete flow querying two different endpoints:
 
 ```bash
-# 1. Load the login page to receive the csrftoken cookie
-curl -c cookies.txt http://localhost:8000/login/
-
-# 2. Authenticate (replace <token> with the value from the csrftoken cookie)
-curl -c cookies.txt -b cookies.txt -X POST http://localhost:8000/login/ \
-  -d 'nombre=operador1&password=mypassword&csrfmiddlewaretoken=<token>'
-
-# 3. Query a transport/logistics autocomplete endpoint
-curl -b cookies.txt 'http://localhost:8000/autocomplete/empresa/?q=agro'
+# Query a transport/logistics autocomplete endpoint (no session required)
+curl 'http://localhost:8000/autocomplete/empresa/?q=agro'
 # Response:
 # [{"id": 3, "rif": "J-30000000-0", "nombre": "Agrotrack C.A."}]
 
-# 4. Query a visitor/personnel autocomplete endpoint
-curl -b cookies.txt 'http://localhost:8000/autocomplete/persona/nombre/?q=jua'
+# Query a visitor/personnel autocomplete endpoint (no session required)
+curl 'http://localhost:8000/autocomplete/persona/nombre/?q=jua'
 # Response:
 # ["Juan", "Juana"]
+
+# Retrieve all destinations by passing an empty q
+curl 'http://localhost:8000/autocomplete/destino/?q='
+# Response: full list of all Destino records
 ```

@@ -4,14 +4,21 @@ sidebarTitle: "Overview"
 description: "Overview of Planta Milenio's HTTP endpoints, session-based authentication, and the two endpoint categories: autocomplete JSON and PDF report downloads."
 ---
 
-Planta Milenio exposes HTTP endpoints consumed by its own frontend through AJAX calls and direct browser navigation. These endpoints fall into three categories: autocomplete endpoints that return JSON arrays for real-time form field suggestions, report endpoints that stream PDF file downloads, and view endpoints that serve full HTML pages for the web UI. All endpoints are served by Django 5 and require an active user session.
+Planta Milenio exposes HTTP endpoints consumed by its own frontend through AJAX calls and direct browser navigation. These endpoints fall into three categories: autocomplete endpoints that return JSON arrays for real-time form field suggestions, report endpoints that stream PDF file downloads, and view endpoints that serve full HTML pages for the web UI. All endpoints are served by Django 5.
 
 ## Authentication
 
-All endpoints require an active Django session. Authentication is performed by submitting a `POST` request to `/login/` with the user's `nombre` and `password` form fields. On success, Django sets a `sessionid` cookie that must be included in every subsequent request.
+Authentication is performed by submitting a `POST` request to `/login/` with the user's `nombre` and `password` form fields. On success, Django sets a `sessionid` cookie that must be included in every subsequent request.
+
+Autocomplete endpoints for transport and logistics data (empresa, chuto, tanque, destino, conductor, producto) do **not** perform a session check in their view logic — they only require that the Django application is reachable. The six visitor/personnel autocomplete endpoints (`/autocomplete/persona/…`) also do not check session. PDF report endpoints vary: `reporte_pdf_materia_prima` checks for an active session and `permiso_reportes`; `reporte_pdf_personal` and `reporte_historial` do not perform a session check and are accessible without authentication.
 
 <Note>
-  Autocomplete endpoints are `GET`-only and are decorated with `@require_GET`. Sending any other HTTP method will return a `405 Method Not Allowed` response.
+  All twelve autocomplete endpoints accept `GET` requests only. The six
+  visitor/personnel endpoints (`/autocomplete/persona/…`) and
+  `/autocomplete/producto/` are decorated with `@require_GET` and will return
+  `405 Method Not Allowed` for any other HTTP method. The remaining transport
+  endpoints (empresa, chuto, tanque, destino, conductor) are not decorated with
+  `@require_GET` but are functionally read-only in the application.
 </Note>
 
 ### CSRF Protection
@@ -28,7 +35,7 @@ curl -c cookies.txt http://localhost:8000/login/
 curl -c cookies.txt -b cookies.txt -X POST http://localhost:8000/login/ \
   -d 'nombre=operador1&password=mypassword&csrfmiddlewaretoken=<token>'
 
-# Step 3 — Use the session cookie for all subsequent requests
+# Step 3 — Use the session cookie for subsequent requests to protected views
 curl -b cookies.txt 'http://localhost:8000/autocomplete/empresa/?q=agro'
 ```
 
@@ -38,13 +45,13 @@ Planta Milenio's endpoints are organised into two primary API surface areas plus
 
 | Category | Base Path | Response Format | Auth Requirement |
 |---|---|---|---|
-| Autocomplete | `/autocomplete/…` | JSON array | Active session |
-| PDF Reports | `/reporte_pdf/…`, `/reporte_historial/` | `application/pdf` | Active session + optional per-module permission |
+| Autocomplete | `/autocomplete/…` | JSON array | None (transport) / None (persona) |
+| PDF Reports | `/reporte_pdf/…`, `/reporte_historial/` | `application/pdf` | Varies — see individual endpoint notes |
 | HTML Views | `/control/`, `/reportes/`, etc. | `text/html` | Active session + per-module permission |
 
 ### Per-Module Permissions
 
-Non-autocomplete views enforce per-module permissions stored on the authenticated user's profile. If a user attempts to access a restricted view without the required permission, they are redirected to the login page. Autocomplete endpoints only require a valid session and do not check module-level permissions.
+Non-autocomplete views enforce per-module permissions stored on the authenticated user's profile. If a user attempts to access a restricted view without the required permission, they are redirected to the login page. Autocomplete endpoints do not check module-level permissions.
 
 <CardGroup cols={2}>
   <Card

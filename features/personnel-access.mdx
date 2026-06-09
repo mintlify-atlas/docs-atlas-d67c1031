@@ -104,3 +104,7 @@ GET /control_personas/?buscar=garcia&historial_page=3
 ```
 
 Both `buscar` and `historial_page` can be combined freely. The pagination controls in the page template maintain the active search term across page navigation.
+
+## Read-Only Mode
+
+Accounts with the `solo_consulta` flag can access `/control_personas/` and use all GET-based features — browsing and searching the history panel. Any POST submission is blocked regardless of its type: this covers both new entry registration (the main entry form) and exit recording (`salida_id` submissions). The form fields are disabled in the template when this flag is active, making the restriction visible before the operator attempts to submit.

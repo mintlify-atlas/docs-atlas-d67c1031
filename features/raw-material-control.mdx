@@ -86,6 +86,12 @@ GET  /control/?fact_num=<order_number>&fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM
 # Filter history only (no order search)
 GET  /control/?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD
 
+# Paginate the history panel
+GET  /control/?page=<n>
+
+# Combine date filter and pagination
+GET  /control/?fecha_inicio=YYYY-MM-DD&fecha_fin=YYYY-MM-DD&page=<n>
+
 # Register an entry (form POST)
 POST /control/
      Body: validar_fact_num=1, Vehiculo_Placa=..., producto_descripcion=...

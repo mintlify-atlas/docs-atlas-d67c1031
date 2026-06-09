@@ -1,14 +1,36 @@
 ---
-title: "PDF Report Download Endpoints"
-sidebarTitle: "Reports API"
+title: "PDF Report Download Endpoints for Operations History"
+sidebarTitle: "Reports"
 description: "Reference for the three PDF report download endpoints in Planta Milenio that generate WeasyPrint PDFs for raw-material history and personnel access records."
 ---
 
 Planta Milenio generates PDF reports on demand using **WeasyPrint**. Each report endpoint queries the database, renders a Django HTML template, converts it to PDF in-process, and streams the result back to the client as a direct file download. All three endpoints respond with `Content-Type: application/pdf` and a `Content-Disposition: attachment` header so that browsers prompt the user to save the file rather than attempting to display it inline.
 
 <Warning>
-  All PDF endpoints are capped at **200 records per request**. If your date range contains more than 200 entries, only the 200 most recent records (ordered by timestamp descending) will appear in the PDF. Use a narrower date range to export larger datasets in multiple files.
+  All PDF endpoints that accept date filters are capped at **200 records per
+  request**. If your date range contains more than 200 entries, only the first
+  200 records (ordered by timestamp descending) will appear in the PDF. Use a
+  narrower date range to export larger datasets in multiple files.
 </Warning>
+
+<Note>
+  Users with `solo_consulta` enabled on their profile **are** permitted to
+  download PDF reports. The `solo_consulta` flag only blocks `POST`-based write
+  operations (registering or modifying entries). It does not restrict access to
+  report endpoints.
+</Note>
+
+## Authentication Requirements
+
+The three endpoints have different authentication requirements:
+
+| Endpoint | Session required | Permission required |
+|---|---|---|
+| `GET /reporte_pdf/materia_prima/` | Yes | `permiso_reportes` |
+| `GET /reporte_pdf/personal/` | No | None |
+| `GET /reporte_historial/` | No | None |
+
+`reporte_pdf_personal` and `reporte_historial` do not perform any session or permission check in their view implementations — they are accessible to any request that reaches the Django application.
 
 ## Shared Query Parameters
 
@@ -36,7 +58,7 @@ All three report endpoints accept the same optional date-range filter:
 
 ## GET /reporte\_pdf/materia\_prima/
 
-Generates a PDF report of raw-material intake entries recorded in the `Historial` model. This endpoint is restricted to users who hold the `permiso_reportes` permission on their profile.
+Generates a PDF report of raw-material intake entries recorded in the `Historial` model. This endpoint is restricted to users who hold the `permiso_reportes` permission on their profile. If the requesting user does not have an active session or lacks `permiso_reportes`, they are redirected to the `/control/` view.
 
 **Auth:** Active session + `permiso_reportes` permission required.
 
@@ -67,9 +89,9 @@ curl -b cookies.txt \
 
 ## GET /reporte\_pdf/personal/
 
-Generates a PDF report of personnel and visitor access records from the `AccesoPersona` model. This endpoint requires only a valid login session and does not enforce an additional module-level permission check.
+Generates a PDF report of personnel and visitor access records from the `AccesoPersona` model. This endpoint does **not** check for an active session or any permission — it is accessible without authentication.
 
-**Auth:** Active session required.
+**Auth:** None required.
 
 **Behavior:** Returns up to 200 records from `AccesoPersona`, ordered by `hora_entrada` descending. When `fecha_inicio` and `fecha_fin` are supplied, only records whose `hora_entrada` falls within the range are included.
 
@@ -89,8 +111,7 @@ Generates a PDF report of personnel and visitor access records from the `AccesoP
 </ParamField>
 
 ```bash
-curl -b cookies.txt \
-  'http://localhost:8000/reporte_pdf/personal/?fecha_inicio=2024-01-01&fecha_fin=2024-01-31' \
+curl 'http://localhost:8000/reporte_pdf/personal/?fecha_inicio=2024-01-01&fecha_fin=2024-01-31' \
   -o reporte_personal.pdf
 ```
 
@@ -98,11 +119,11 @@ curl -b cookies.txt \
 
 ## GET /reporte\_historial/
 
-Generates a PDF of the full raw-material intake history from the `Historial` model. When no date range is provided, this endpoint returns the **last 100 records** rather than an empty report, making it useful for a quick operational snapshot without needing to specify dates.
+Generates a PDF of the full raw-material intake history from the `Historial` model. When no date range is provided, this endpoint returns the **last 100 records** rather than an empty report, making it useful for a quick operational snapshot without needing to specify dates. This endpoint does **not** check for an active session or any permission — it is accessible without authentication.
 
-**Auth:** Active session required.
+**Auth:** None required.
 
-**Behavior:** When `fecha_inicio` and `fecha_fin` are both provided, returns up to 200 records filtered by that range, ordered by timestamp descending. When both parameters are absent, returns the 100 most recent records.
+**Behavior:** When `fecha_inicio` and `fecha_fin` are both provided, returns up to 200 records filtered by that range, ordered by `fecha_hora` descending. When either parameter is absent, returns the 100 most recent records (no date filtering applied).
 
 **Response headers:**
 
@@ -112,23 +133,22 @@ Generates a PDF of the full raw-material intake history from the `Historial` mod
 | `Content-Disposition` | `attachment; filename="reporte_historial.pdf"` |
 
 <ParamField query="fecha_inicio" type="string">
-  Start date in `YYYY-MM-DD` format. Optional — if omitted alongside
-  `fecha_fin`, the last 100 records are returned.
+  Start date in `YYYY-MM-DD` format. Optional — if either date parameter is
+  absent, the last 100 records are returned instead of applying a date filter.
 </ParamField>
 
 <ParamField query="fecha_fin" type="string">
-  End date in `YYYY-MM-DD` format. Optional — if omitted alongside
-  `fecha_inicio`, the last 100 records are returned.
+  End date in `YYYY-MM-DD` format. Optional — if either date parameter is
+  absent, the last 100 records are returned instead of applying a date filter.
 </ParamField>
 
 ```bash
 # Filtered by date range
-curl -b cookies.txt \
-  'http://localhost:8000/reporte_historial/?fecha_inicio=2024-01-01&fecha_fin=2024-01-31' \
+curl 'http://localhost:8000/reporte_historial/?fecha_inicio=2024-01-01&fecha_fin=2024-01-31' \
   -o reporte_historial.pdf
 
 # No filters — returns the last 100 records
-curl -b cookies.txt 'http://localhost:8000/reporte_historial/' \
+curl 'http://localhost:8000/reporte_historial/' \
   -o reporte_historial.pdf
 ```
 
@@ -136,7 +156,7 @@ curl -b cookies.txt 'http://localhost:8000/reporte_historial/' \
 
 ## Complete Download Example
 
-The following sequence shows a full authenticated PDF download flow:
+The following sequence shows a full authenticated PDF download flow for the raw-material report (which requires `permiso_reportes`) alongside the unauthenticated downloads:
 
 ```bash
 # 1. Load the login page to receive the csrftoken cookie
@@ -146,17 +166,16 @@ curl -c cookies.txt http://localhost:8000/login/
 curl -c cookies.txt -b cookies.txt -X POST http://localhost:8000/login/ \
   -d 'nombre=operador1&password=mypassword&csrfmiddlewaretoken=<token>'
 
-# 3. Download the raw-material report for January 2024
+# 3. Download the raw-material report for January 2024 (requires permiso_reportes)
 curl -b cookies.txt \
   'http://localhost:8000/reporte_pdf/materia_prima/?fecha_inicio=2024-01-01&fecha_fin=2024-01-31' \
   -o reporte_materia_prima.pdf
 
-# 4. Download the personnel access report for the same period
-curl -b cookies.txt \
-  'http://localhost:8000/reporte_pdf/personal/?fecha_inicio=2024-01-01&fecha_fin=2024-01-31' \
+# 4. Download the personnel access report (no session required)
+curl 'http://localhost:8000/reporte_pdf/personal/?fecha_inicio=2024-01-01&fecha_fin=2024-01-31' \
   -o reporte_personal.pdf
 
-# 5. Download a quick operational snapshot (last 100 history records, no date filter)
-curl -b cookies.txt 'http://localhost:8000/reporte_historial/' \
+# 5. Download a quick operational snapshot (last 100 history records, no session required)
+curl 'http://localhost:8000/reporte_historial/' \
   -o reporte_historial.pdf
 ```

@@ -1,5 +1,5 @@
 ---
-title: "Database Setup: SQLite and SQL Server Connections"
+title: "Database Setup: SQLite and SQL Server for Planta Milenio"
 sidebarTitle: "Database Setup"
 description: "Configure Planta Milenio's three database connections: local SQLite for users and logs, and two SQL Server instances via mssql-django and FreeTDS."
 ---
@@ -70,7 +70,7 @@ DATABASES = {
 Replace `<password>` and `<sql-server-host>` with the actual credentials and hostname or IP address for each server. Both connections authenticate as the `profit` SQL Server login and communicate over port 1433.
 
 <Note>
-  `mssql-django` 1.6 — the version pinned in `requirements.txt` — is the first release with official Django 5 support. Earlier versions of `mssql-django` are not compatible with Django 5.x.
+  `mssql-django` 1.6 — the version pinned in `requirements.txt` — adds Django 5.1 and 5.2 support. Use this version or newer when running Planta Milenio on Django 5.x.
 </Note>
 
 ## Installing FreeTDS on Linux

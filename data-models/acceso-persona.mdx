@@ -1,5 +1,5 @@
 ---
-title: "AccesoPersona Model: Visitor Access Log"
+title: "AccesoPersona Model: Plant Visitor Access Log Fields"
 sidebarTitle: "Acceso Persona"
 description: "Reference for the AccesoPersona model that records every plant visitor with identity, company, visit purpose, entry/exit timestamps, and approval status."
 ---
@@ -115,10 +115,11 @@ When `estado_visita` is set to `'negada'` at the time of record creation, the vi
 ## Autocomplete Integration
 
 <Tip>
-  The Control de Personas entry form integrates two autocomplete endpoints that query existing `AccesoPersona` records to speed up data entry for repeat visitors:
+  The Control de Personas entry form integrates several autocomplete endpoints that query existing `AccesoPersona` records to speed up data entry for repeat visitors:
 
-  - **`/autocomplete/persona/cedula/`** — returns known `cedula` values matching the typed prefix, along with the associated `nombre`, `apellido`, and `empresa` so the remaining fields are filled automatically.
-  - **`/autocomplete/persona/empresa/`** — returns known company names matching the typed prefix for quick selection in the `empresa` field.
+  - **`/autocomplete/persona/cedula/`** — returns a list of known `cedula` values matching the typed prefix.
+  - **`/autocomplete/persona/empresa/`** — returns a list of known company names matching the typed prefix for quick selection in the `empresa` field.
+  - **`/autocomplete/persona/nombre/`**, **`/autocomplete/persona/apellido/`**, and **`/autocomplete/persona/placa/`** — return matching values for their respective fields.
 
   These endpoints reduce transcription errors for frequent contractors and delivery personnel who visit the plant regularly.
 </Tip>

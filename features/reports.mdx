@@ -1,5 +1,5 @@
 ---
-title: "Generate Operational Reports and PDF Exports"
+title: "Operational Reports: Raw Material and Personnel Exports"
 sidebarTitle: "Reports"
 description: "Use the Reportes module to view and download PDF reports of raw-material intake history and personnel access records, filtered by date range."
 ---
@@ -51,7 +51,11 @@ Switch between report types using the `tipo` query parameter. The default when `
     ```
     GET /reportes/?tipo=personal
     GET /reportes/?tipo=personal&fecha_inicio=2025-01-01&fecha_fin=2025-01-31
+    GET /reportes/?tipo=personal&page=2
+    GET /reportes/?tipo=personal&fecha_inicio=2025-01-01&fecha_fin=2025-01-31&page=3
     ```
+
+    The personal report is paginated at 10 records per page. Use `?page=N` to navigate between pages.
   </Tab>
 </Tabs>
 
